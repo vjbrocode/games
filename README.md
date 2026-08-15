@@ -1,0 +1,74 @@
+# Games
+
+Browser games, each self-contained and playable from a URL. No install, no build step.
+
+**Play them here: https://vjbrocode.github.io/games/**
+
+## Games
+
+| Game | Folder | Current | Notes |
+| --- | --- | --- | --- |
+| [Operation Nightfall](night-infiltration/) | `night-infiltration/` | v1 | 3D stealth FPS (three.js). Needs a keyboard and mouse — desktop only. |
+
+## Repo layout
+
+```
+.
+├── index.html                  landing page — lists every game
+├── night-infiltration/
+│   ├── index.html              stable entry point → forwards to current version
+│   └── v1.html                 the game, version 1
+└── .github/workflows/
+    └── deploy-pages.yml        publishes the repo root to GitHub Pages
+```
+
+Every game lives in its own folder and is served at `/<folder>/` — e.g.
+`https://vjbrocode.github.io/games/night-infiltration/`.
+
+## Versioning
+
+Each release is its own file, `vN.html`, and **older versions are never deleted or
+overwritten** — every one stays playable at its own permanent URL:
+
+- `night-infiltration/` → always the current release (share this one)
+- `night-infiltration/v1.html` → v1, forever
+
+The folder's `index.html` is a small forwarder, not a copy of the game, so keeping old
+versions around costs one file per release and nothing else.
+
+### Releasing a new version
+
+1. Add the new file alongside the old one, e.g. `night-infiltration/v2.html`.
+2. Bump the version string inside it — it appears in three places: the `<title>`, the
+   `<h1>` on the start screen, and `version:` in the `GAME` object.
+3. In `night-infiltration/index.html`, change the two `v1.html` references to `v2.html`.
+4. Update the **Current** column in the table above.
+5. Push to `main`.
+
+## Adding a game
+
+1. Create a folder at the repo root, e.g. `my-game/`.
+2. Put the first release in it as `v1.html`, plus any assets it needs — reference them
+   with **relative** paths (`./sprites/x.png`, never `/sprites/x.png`, which breaks
+   under the `/games/` path prefix).
+3. Copy `night-infiltration/index.html` into the new folder as its forwarder.
+4. Add one entry to the `GAMES` array near the bottom of the root `index.html`.
+5. Add a row to the table above.
+6. Commit and push to `main` — the deploy runs automatically.
+
+## Running locally
+
+Opening `index.html` straight off disk mostly works, but a local server matches what
+Pages actually serves:
+
+```bash
+python3 -m http.server 8000
+```
+
+Then visit http://localhost:8000.
+
+## Deployment
+
+Pushing to `main` triggers `.github/workflows/deploy-pages.yml`, which publishes the
+repo root as-is. This requires **Settings → Pages → Source: GitHub Actions** to be set
+once in the repository settings.
