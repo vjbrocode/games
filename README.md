@@ -8,7 +8,16 @@ Browser games, each self-contained and playable from a URL. No install, no build
 
 | Game | Folder | Current | Notes |
 | --- | --- | --- | --- |
-| [Operation Nightfall](night-infiltration/) | `night-infiltration/` | v1 | 3D stealth FPS (three.js). Needs a keyboard and mouse — desktop only. |
+| [Operation Nightfall](night-infiltration/) | `night-infiltration/` | v2 | 3D stealth FPS (three.js). Needs a keyboard and mouse — desktop only. |
+
+### Operation Nightfall changelog
+
+- **v2** — fixed a start screen that was unusable on smaller displays: the briefing
+  button sat below the fold with no way to scroll to it, so players could not get past
+  the first page. Trimmed the wall of text to a short hook plus the eight keys you need,
+  moved the full reference behind a collapsible panel, added the missing mobile viewport
+  tag, and made the briefing screen fit short viewports too.
+- **v1** — first public release.
 
 ## Repo layout
 
@@ -17,7 +26,8 @@ Browser games, each self-contained and playable from a URL. No install, no build
 ├── index.html                  landing page — lists every game
 ├── night-infiltration/
 │   ├── index.html              stable entry point → forwards to current version
-│   └── v1.html                 the game, version 1
+│   ├── v1.html                 the game, version 1
+│   └── v2.html                 the game, version 2  ← current
 └── .github/workflows/
     └── deploy-pages.yml        publishes the repo root to GitHub Pages
 ```
@@ -31,6 +41,7 @@ Each release is its own file, `vN.html`, and **older versions are never deleted 
 overwritten** — every one stays playable at its own permanent URL:
 
 - `night-infiltration/` → always the current release (share this one)
+- `night-infiltration/v2.html` → v2, forever
 - `night-infiltration/v1.html` → v1, forever
 
 The folder's `index.html` is a small forwarder, not a copy of the game, so keeping old
@@ -38,11 +49,12 @@ versions around costs one file per release and nothing else.
 
 ### Releasing a new version
 
-1. Add the new file alongside the old one, e.g. `night-infiltration/v2.html`.
+1. Add the new file alongside the old one, e.g. `night-infiltration/v3.html`.
 2. Bump the version string inside it — it appears in three places: the `<title>`, the
    `<h1>` on the start screen, and `version:` in the `GAME` object.
-3. In `night-infiltration/index.html`, change the two `v1.html` references to `v2.html`.
-4. Update the **Current** column in the table above.
+3. In `night-infiltration/index.html`, change the three `v2.html` references to `v3.html`
+   (canonical link, meta refresh, and the no-JS fallback link).
+4. Update the **Current** column and the changelog above.
 5. Push to `main`.
 
 ## Adding a game
