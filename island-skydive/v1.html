@@ -1,0 +1,2353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>ISLAND SKYDIVE v1 — Coral Bay</title>
+
+<style>
+  :root{
+    --sea:#0d7fa8; --sea-deep:#075a7c; --sand:#f6e3ba; --coral:#ff6b5e;
+    --sun:#ffc247; --leaf:#2fa46a; --ink:#0b3c4d; --paper:#fffaf0;
+  }
+  html,body{margin:0;padding:0;overflow:hidden;background:#0a2b3d;
+    font-family:"Avenir Next","Segoe UI",system-ui,-apple-system,sans-serif;
+    color:var(--ink);-webkit-font-smoothing:antialiased;
+    user-select:none;-webkit-user-select:none;touch-action:none;}
+  canvas{display:block;}
+
+  /* ---------------------------------------------------------------
+     Every overlay lives inside #ui, which never eats pointer events.
+     Anything clickable turns them back on for itself.
+     --------------------------------------------------------------- */
+  #ui{position:fixed;inset:0;pointer-events:none;z-index:5;}
+  .pill{
+    background:rgba(255,250,240,.86);border-radius:999px;
+    padding:7px 16px;box-shadow:0 4px 14px rgba(4,40,60,.22);
+    font-size:14px;letter-spacing:.5px;display:flex;gap:8px;align-items:baseline;
+    backdrop-filter:blur(6px);
+  }
+  .pill b{font-size:19px;font-variant-numeric:tabular-nums;}
+  .pill span{font-size:11px;letter-spacing:1.5px;opacity:.6;text-transform:uppercase;}
+
+  #topLeft{position:absolute;left:18px;top:16px;display:flex;gap:10px;flex-wrap:wrap;}
+  #topRight{position:absolute;right:18px;top:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+  #botLeft{position:absolute;left:18px;bottom:18px;max-width:340px;}
+  #botCentre{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
+    display:flex;gap:10px;align-items:center;}
+
+  #hints{
+    background:rgba(255,250,240,.82);border-radius:14px;padding:10px 14px;
+    font-size:12.5px;line-height:1.75;box-shadow:0 4px 14px rgba(4,40,60,.18);
+  }
+  #hints kbd{
+    display:inline-block;min-width:19px;text-align:center;
+    background:var(--ink);color:#fff;border-radius:5px;padding:1px 5px;
+    font-family:inherit;font-size:11px;font-weight:600;margin-right:3px;
+  }
+
+  /* phase banner — the one thing the player must not miss */
+  #banner{
+    position:absolute;left:50%;top:70px;transform:translateX(-50%) translateY(-8px);
+    background:rgba(11,60,77,.9);color:#fffaf0;border-radius:999px;
+    padding:10px 26px;font-size:16px;letter-spacing:2px;font-weight:600;
+    box-shadow:0 8px 26px rgba(4,40,60,.35);opacity:0;transition:opacity .3s,transform .3s;
+    white-space:nowrap;
+  }
+  #banner.on{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* big soft altitude warning while the canopy is still packed */
+  #alarm{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    font-size:clamp(30px,7vw,64px);font-weight:800;letter-spacing:6px;
+    color:#fff;text-shadow:0 0 24px rgba(255,60,50,.9),0 4px 20px rgba(0,0,0,.5);
+    opacity:0;pointer-events:none;
+  }
+
+  /* target bearing chevron: points at the drop zone, fades when you nail it */
+  #bearing{width:54px;height:54px;position:relative;}
+  #bearing svg{position:absolute;inset:0;}
+  #bearArrow{transform-origin:27px 27px;transition:transform .08s linear;}
+
+  #ringRow{display:flex;gap:5px;align-items:center;}
+  .rdot{width:11px;height:11px;border-radius:50%;background:rgba(255,250,240,.45);
+    box-shadow:0 1px 4px rgba(4,40,60,.3);transition:background .2s,transform .2s;}
+  .rdot.got{background:var(--sun);transform:scale(1.35);}
+
+  /* ---------------- start card ---------------- */
+  #start,#result{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    pointer-events:auto;background:rgba(6,42,60,.45);backdrop-filter:blur(3px);
+  }
+  #start.on,#result.on{display:flex;}
+  .card{
+    width:min(92vw,660px);max-height:92vh;overflow:auto;
+    background:linear-gradient(170deg,#fffaf0,#ffeed6);
+    border-radius:26px;padding:34px 38px 30px;
+    box-shadow:0 26px 70px rgba(2,30,45,.5);
+    text-align:center;
+  }
+  .card h1{margin:0;font-size:clamp(30px,6.4vw,52px);letter-spacing:1px;color:var(--ink);line-height:1.05;}
+  .card h1 em{font-style:normal;color:var(--coral);}
+  .card .sub{margin:8px 0 22px;font-size:14px;letter-spacing:3px;
+    text-transform:uppercase;color:#7c9aa8;}
+  .keys{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;
+    text-align:left;margin:0 0 24px;
+  }
+  .keybox{background:rgba(13,127,168,.09);border-radius:16px;padding:14px 16px;}
+  .keybox h3{margin:0 0 8px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--sea);}
+  .keybox div{font-size:13px;line-height:1.9;}
+  .keybox kbd{display:inline-block;min-width:19px;text-align:center;background:var(--ink);
+    color:#fff;border-radius:5px;padding:1px 6px;font-family:inherit;font-size:11px;font-weight:600;margin-right:4px;}
+  .btn{
+    pointer-events:auto;cursor:pointer;border:none;font-family:inherit;font-weight:700;
+    background:linear-gradient(180deg,#ff8265,#ff5a4c);color:#fff;
+    padding:15px 46px;border-radius:999px;font-size:19px;letter-spacing:3px;
+    box-shadow:0 10px 24px rgba(255,90,76,.42);transition:transform .12s,box-shadow .12s;
+  }
+  .btn:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(255,90,76,.5);}
+  .btn:active{transform:translateY(1px);}
+  .btn.ghost{background:none;color:var(--sea);box-shadow:none;font-size:14px;
+    letter-spacing:2px;padding:10px 18px;}
+  .btn.ghost:hover{transform:none;text-decoration:underline;}
+
+  /* ---------------- score card ---------------- */
+  #stars{font-size:44px;letter-spacing:8px;margin:2px 0 6px;line-height:1;}
+  #verdict{font-size:clamp(24px,5vw,38px);font-weight:800;margin:0 0 4px;color:var(--sea);}
+  #verdictSub{margin:0 0 20px;color:#7c9aa8;font-size:14px;}
+  .rows{text-align:left;max-width:400px;margin:0 auto 22px;font-size:15px;}
+  .row{display:flex;justify-content:space-between;padding:9px 4px;border-bottom:1px dashed rgba(13,127,168,.25);}
+  .row.total{border:none;font-weight:800;font-size:18px;padding-top:14px;color:var(--ink);}
+  .row .v{font-variant-numeric:tabular-nums;}
+
+  /* ---------------- touch controls ---------------- */
+  #touch{position:absolute;inset:0;display:none;}
+  #touch.on{display:block;}
+  #stick{position:absolute;left:22px;bottom:22px;width:132px;height:132px;border-radius:50%;
+    background:rgba(255,250,240,.28);box-shadow:inset 0 0 0 2px rgba(255,255,255,.5);pointer-events:auto;}
+  #knob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;
+    border-radius:50%;background:rgba(255,250,240,.85);box-shadow:0 4px 12px rgba(4,40,60,.3);}
+  .tbtn{position:absolute;right:22px;width:86px;height:86px;border-radius:50%;pointer-events:auto;
+    background:rgba(255,250,240,.85);box-shadow:0 6px 16px rgba(4,40,60,.3);
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    font-size:12px;font-weight:700;letter-spacing:1px;color:var(--ink);line-height:1.2;}
+  #tUp{bottom:132px;} #tDown{bottom:22px;right:124px;} #tAct{bottom:22px;background:linear-gradient(180deg,#ff8265,#ff5a4c);color:#fff;}
+
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,#63b7e8,#bfe6f5);color:#0b3c4d;font-size:15px;
+    letter-spacing:4px;z-index:20;}
+</style>
+</head>
+<body>
+
+<div id="loading">BUILDING CORAL BAY…</div>
+
+<div id="ui">
+
+  <div id="topLeft">
+    <div class="pill"><span>Drop</span><b id="hRound">1</b><span>of 4</span></div>
+    <div class="pill"><span>Score</span><b id="hScore">0</b></div>
+    <div class="pill"><span>Wind</span><b id="hWind">0</b><span>m/s</span></div>
+  </div>
+
+  <div id="topRight">
+    <div class="pill"><b id="hAlt">0</b><span>m above ground</span></div>
+    <div class="pill"><b id="hVs">0</b><span>m/s down</span></div>
+    <div class="pill"><b id="hGs">0</b><span>km/h</span></div>
+  </div>
+
+  <div id="banner"></div>
+  <div id="alarm">PULL!</div>
+
+  <div id="botCentre">
+    <div id="bearing">
+      <svg viewBox="0 0 54 54">
+        <circle cx="27" cy="27" r="25" fill="rgba(255,250,240,.8)"/>
+        <g id="bearArrow">
+          <path d="M27 7 L35 27 L27 22 L19 27 Z" fill="#ff5a4c"/>
+        </g>
+        <circle cx="27" cy="27" r="3.5" fill="#0b3c4d"/>
+      </svg>
+    </div>
+    <div class="pill"><span>Drop zone</span><b id="hDist">0</b><span>m</span></div>
+    <div class="pill"><span>Rings</span><div id="ringRow"></div></div>
+  </div>
+
+  <div id="botLeft"><div id="hints"></div></div>
+
+  <!-- touch pad, shown only when the device has no keyboard -->
+  <div id="touch">
+    <div id="stick"><div id="knob"></div></div>
+    <div class="tbtn" id="tUp">CLIMB</div>
+    <div class="tbtn" id="tDown">DIVE</div>
+    <div class="tbtn" id="tAct">JUMP</div>
+  </div>
+
+  <!-- ---------------- start card ---------------- -->
+  <div id="start" class="on">
+    <div class="card">
+      <h1>ISLAND <em>SKYDIVE</em></h1>
+      <p class="sub">Coral Bay &middot; four drops &middot; one perfect landing</p>
+      <p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#456;">
+        Fly the tour helicopter out over the reef, jump, swoop through the golden rings,
+        pop the canopy and touch down on the bullseye. Softer is better. Closer is better.
+      </p>
+      <div class="keys">
+        <div class="keybox">
+          <h3>Helicopter</h3>
+          <div>
+            <kbd>W</kbd><kbd>S</kbd> forward / back<br>
+            <kbd>A</kbd><kbd>D</kbd> turn<br>
+            <kbd>Space</kbd> climb &middot; <kbd>Shift</kbd> descend<br>
+            <kbd>F</kbd> jump out!
+          </div>
+        </div>
+        <div class="keybox">
+          <h3>Free fall</h3>
+          <div>
+            <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> track through the rings<br>
+            <kbd>Space</kbd> open the parachute<br>
+            <span style="opacity:.65">(it opens itself at 120&nbsp;m)</span>
+          </div>
+        </div>
+        <div class="keybox">
+          <h3>Under canopy</h3>
+          <div>
+            <kbd>A</kbd><kbd>D</kbd> steer<br>
+            <kbd>W</kbd> dive &middot; <kbd>S</kbd> brake<br>
+            <kbd>Space</kbd> flare just before you land
+          </div>
+        </div>
+        <div class="keybox">
+          <h3>Camera</h3>
+          <div>
+            drag the <b>mouse</b> to look around<br>
+            <b>scroll</b> to zoom<br>
+            <kbd>R</kbd> restart the drop
+          </div>
+        </div>
+      </div>
+      <button class="btn" id="playBtn">TAKE OFF</button>
+    </div>
+  </div>
+
+  <!-- ---------------- score card ---------------- -->
+  <div id="result">
+    <div class="card">
+      <div id="stars">★★★</div>
+      <p id="verdict">BULLSEYE!</p>
+      <p id="verdictSub">Coral Bay Beach</p>
+      <div class="rows" id="scoreRows"></div>
+      <button class="btn" id="nextBtn">NEXT DROP</button>
+      <div><button class="btn ghost" id="againBtn">replay this drop</button></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ============================================================================
+ * ISLAND SKYDIVE — v1
+ *
+ * One file, no assets, no build step. Every texture is painted into a <canvas>
+ * at load time and every model is assembled from primitives, so the whole
+ * holiday fits in a single HTTP request.
+ *
+ * The scene is built once and then never rebuilt; a drop only moves the
+ * helicopter, the jumper and the target marker around. That keeps the frame
+ * budget for the two things that actually animate: the sea surface and the
+ * rotor.
+ *
+ * Layout of this file:
+ *   1  constants, RNG, small maths helpers
+ *   2  renderer / scene / sky / light
+ *   3  the sea            (analytic waves, normals derived not computed)
+ *   4  the island         (one height function, shared by mesh and physics)
+ *   5  scenery            (palms, huts, pier, boats, umbrellas, birds)
+ *   6  the helicopter
+ *   7  the jumper and the canopy
+ *   8  drop zones, rings, effects
+ *   9  camera
+ *  10  audio
+ *  11  state machine, input, HUD, main loop
+ * ========================================================================= */
+
+const GAME = { title:"Island Skydive", version:"v1", place:"Coral Bay" };
+
+/* ---------------------------------------------------------------- 1. maths */
+
+const clamp  = (v,a,b)=> v<a?a:(v>b?b:v);
+const lerp   = (a,b,t)=> a+(b-a)*t;
+/* smoothstep that also works "backwards" (a > b), which is how every falloff
+   in this file is written: 0 at the outer edge, 1 at the middle. */
+const sstep  = (a,b,x)=>{ const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
+const damp   = (cur,tgt,rate,dt)=> cur+(tgt-cur)*(1-Math.exp(-rate*dt));
+
+/* Deterministic RNG. The island must look identical every reload — otherwise
+   the drop zones, which are placed by sampling the terrain, would move. */
+function mulberry(seed){
+  return function(){
+    seed |= 0; seed = seed+0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed>>>15, 1|seed);
+    t = t + Math.imul(t ^ t>>>7, 61|t) ^ t;
+    return ((t ^ t>>>14) >>> 0) / 4294967296;
+  };
+}
+const rnd = mulberry(20260816);
+const rr  = (a,b)=> a + rnd()*(b-a);
+
+/* -------------------------------------------------- 2. renderer and stage */
+
+const scene = new THREE.Scene();
+const HAZE  = new THREE.Color(0xcfe9f4);
+scene.fog   = new THREE.Fog(HAZE, 600, 3400);
+
+const camera = new THREE.PerspectiveCamera(62, innerWidth/innerHeight, 0.4, 9000);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+addEventListener("resize", ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* --- canvas texture helpers ------------------------------------------- */
+function mkCanvas(w,h){ const c=document.createElement("canvas"); c.width=w; c.height=h||w; return c; }
+function tex(canvas, rx, ry){
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  if(rx) t.repeat.set(rx, ry||rx);
+  t.anisotropy = 4;
+  return t;
+}
+
+/* --- sky: a vertical gradient on the inside of a very large sphere ------ */
+(function buildSky(){
+  const c = mkCanvas(4, 512), g = c.getContext("2d");
+  const grad = g.createLinearGradient(0,0,0,512);
+  /* The stops crowd together towards the horizon so the haze band reads as a
+     gradient rather than as a painted stripe across the sky. */
+  grad.addColorStop(0.00, "#1f66c8");   // zenith
+  grad.addColorStop(0.30, "#4e9ee0");
+  grad.addColorStop(0.50, "#79b8e9");
+  grad.addColorStop(0.66, "#a5d2f0");
+  grad.addColorStop(0.78, "#cfe9f4");   // haze — matches scene.fog
+  grad.addColorStop(0.84, "#e2f1f9");   // horizon glow
+  grad.addColorStop(0.92, "#cbe4f0");
+  grad.addColorStop(1.00, "#a9cfe2");
+  g.fillStyle = grad; g.fillRect(0,0,4,512);
+
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(4200, 32, 20),
+    new THREE.MeshBasicMaterial({map:tex(c), side:THREE.BackSide, fog:false, depthWrite:false})
+  );
+  sky.renderOrder = -10;
+  scene.add(sky);
+})();
+
+/* --- the sun: a light, a bloom sprite and a hot core ------------------- */
+const SUN_DIR = new THREE.Vector3(0.42, 0.62, -0.66).normalize();
+
+const sun = new THREE.DirectionalLight(0xfff2d6, 1.15);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+/* One tight shadow frustum that chases the action, rather than one huge blurry
+   one covering the whole island. `shadowFocus` is moved every frame. */
+const SHADOW_D = 130;
+sun.shadow.camera.left = -SHADOW_D; sun.shadow.camera.right  =  SHADOW_D;
+sun.shadow.camera.top  =  SHADOW_D; sun.shadow.camera.bottom = -SHADOW_D;
+sun.shadow.camera.near = 1;  sun.shadow.camera.far = 1500;
+sun.shadow.bias = -0.0008;
+sun.shadow.normalBias = 0.6;
+scene.add(sun, sun.target);
+const shadowFocus = new THREE.Vector3();
+
+scene.add(new THREE.HemisphereLight(0xa9dcff, 0xdcc79c, 0.62));
+
+(function buildSunSprite(){
+  const c = mkCanvas(256), g = c.getContext("2d");
+  const grad = g.createRadialGradient(128,128,0, 128,128,128);
+  grad.addColorStop(0.00,"rgba(255,255,245,1)");
+  grad.addColorStop(0.12,"rgba(255,243,205,0.95)");
+  grad.addColorStop(0.34,"rgba(255,214,130,0.42)");
+  grad.addColorStop(1.00,"rgba(255,200,110,0)");
+  g.fillStyle = grad; g.fillRect(0,0,256,256);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map:new THREE.CanvasTexture(c), blending:THREE.AdditiveBlending,
+    depthWrite:false, depthTest:false, fog:false
+  }));
+  s.scale.set(900,900,1);
+  s.position.copy(SUN_DIR).multiplyScalar(3600);
+  s.renderOrder = -9;
+  scene.add(s);
+})();
+
+/* --------------------------------------------------------------- 3. sea */
+
+/* Three travelling sine waves. Cheap, and — the reason for doing it this way —
+   the surface normal is the analytic derivative, so the per-frame vertex pass
+   never has to call computeVertexNormals() over ten thousand triangles. */
+const WAVES = [
+  {ax: 0.0270, az: 0.0130, amp:0.62, spd:1.05, ph:0.0},
+  {ax:-0.0165, az: 0.0305, amp:0.44, spd:0.86, ph:1.7},
+  {ax: 0.0520, az:-0.0440, amp:0.20, spd:1.65, ph:3.1},
+];
+function waveAt(x, z, t, out){
+  let y=0, dx=0, dz=0;
+  for(let i=0;i<WAVES.length;i++){
+    const w = WAVES[i];
+    const p = x*w.ax + z*w.az + t*w.spd + w.ph;
+    y  += w.amp*Math.sin(p);
+    const c = w.amp*Math.cos(p);
+    dx += c*w.ax; dz += c*w.az;
+  }
+  if(out){ out.y=y; out.dx=dx; out.dz=dz; }
+  return y;
+}
+const _w = {y:0,dx:0,dz:0};
+
+/* Fairly transparent on purpose: the turquoise ring round the island is not a
+   painted colour, it is this blue sitting over the pale sand of the reef flat.
+   Out past the shelf the same blue sits over the dark bed and goes deep. */
+/* Roughness and metalness are deliberately mild. Crank them and the swell
+   stops reading as water and starts reading as dark polygons: the specular
+   swings hard between wave faces and every crest gets a hard-edged shadow. */
+const seaMat = new THREE.MeshStandardMaterial({
+  color:0x1793c4, roughness:0.28, metalness:0.18,
+  transparent:true, opacity:0.66,
+});
+
+/* Near sea: displaced every other frame. Far sea: a flat plane sharing the
+   same material, so the join is invisible once fog softens it. */
+const SEA_SIZE = 2000, SEA_SEG = 80;
+const seaGeo = new THREE.PlaneGeometry(SEA_SIZE, SEA_SIZE, SEA_SEG, SEA_SEG);
+seaGeo.rotateX(-Math.PI/2);
+const sea = new THREE.Mesh(seaGeo, seaMat);
+sea.receiveShadow = false;
+sea.renderOrder = 2;
+scene.add(sea);
+
+/* The far sea is OPAQUE, and pre-mixed to the colour the near sea takes on
+   once it has been blended over the deep bed. If it were transparent too, the
+   two planes would stack inside the near ring and darken it into a bruise. */
+const seaFar = new THREE.Mesh(new THREE.PlaneGeometry(16000,16000),
+  new THREE.MeshStandardMaterial({color:0x14719c, roughness:0.30, metalness:0.18}));
+seaFar.rotation.x = -Math.PI/2;
+seaFar.position.y = -0.45;
+scene.add(seaFar);
+
+/* Sea bed, so the transparent water has something to be transparent *to*.
+   Near the shore the island's sand shows through as turquoise; out past the
+   shelf this deep blue takes over. */
+const seabed = new THREE.Mesh(
+  new THREE.PlaneGeometry(16000,16000),
+  new THREE.MeshStandardMaterial({color:0x0a4a68, roughness:1})
+);
+seabed.rotation.x = -Math.PI/2;
+seabed.position.y = -19;
+scene.add(seabed);
+
+function updateSea(t, frame){
+  if(frame & 1) return;                     // 30 Hz is plenty for water
+  const pos = seaGeo.attributes.position, nrm = seaGeo.attributes.normal;
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    waveAt(x, z, t, _w);
+    pos.setY(i, _w.y);
+    const l = Math.hypot(-_w.dx, 1, -_w.dz);
+    nrm.setXYZ(i, -_w.dx/l, 1/l, -_w.dz/l);
+  }
+  pos.needsUpdate = true; nrm.needsUpdate = true;
+}
+
+/* ------------------------------------------------------------ 4. island */
+
+/* ONE height function. The terrain mesh is baked from it and every physics
+   query reads it, so the ground you land on is exactly the ground you see. */
+function islandH(x, z){
+  const r = Math.hypot(x,z) + 1e-4;
+  const a = Math.atan2(z,x);
+  /* A wobbly coastline: three harmonics give headlands and bays without
+     needing real noise. */
+  const R = 198 + 46*Math.sin(3*a + 0.7) + 24*Math.cos(5*a - 1.2) + 12*Math.sin(7*a + 2.4);
+  const t = 1 - r/R;                         // 1 at the middle, 0 at the water line
+
+  if(t <= 0){
+    /* A broad reef flat, not a cliff. The first hundred metres past the water
+       line stay only a few metres deep, which is what makes the ring of water
+       round the island read turquoise instead of navy — and it is the whole
+       reason the pier can run a hundred metres out and still look like it
+       belongs to a beach resort. */
+    const over = r - R;
+    return -1.0 - 17*Math.pow(clamp(over/300, 0, 1), 1.5);
+  }
+
+  let h = 34*Math.pow(t, 1.7);                                   // the dome
+  h += 32*Math.exp(-(((x+66)**2 + (z+58)**2) / 3700));           // north-west peak
+  h += 17*Math.exp(-(((x-88)**2 + (z-26)**2) / 2400));           // second knoll
+  h -= 27*Math.exp(-(((x-104)**2 + (z+92)**2) / 2100));          // inland lagoon
+  h += t*(2.6*Math.sin(x*0.034)*Math.cos(z*0.040)
+        + 1.3*Math.sin(x*0.088+1.3)*Math.sin(z*0.075));          // gentle relief
+  return h;
+}
+
+/* Walk out along a bearing until the land drops under the water line. */
+function shorePoint(angle){
+  let lo = 0, hi = 420;
+  for(let i=0;i<40;i++){
+    const m = (lo+hi)/2;
+    if(islandH(Math.cos(angle)*m, Math.sin(angle)*m) > 0) lo = m; else hi = m;
+  }
+  return {r:lo, x:Math.cos(angle)*lo, z:Math.sin(angle)*lo};
+}
+
+/* --- terrain mesh, coloured per vertex: sand → grass → rock ------------ */
+(function buildIsland(){
+  const SIZE = 900, SEG = 190;
+  const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
+  g.rotateX(-Math.PI/2);
+  const pos = g.attributes.position;
+  const col = new Float32Array(pos.count*3);
+  const c = new THREE.Color();
+
+  const SAND  = new THREE.Color(0xf0dda6);
+  const WET   = new THREE.Color(0xd9c68e);
+  const GRASS = new THREE.Color(0x4f9a4a);
+  const DEEPG = new THREE.Color(0x2f7038);
+  const ROCK  = new THREE.Color(0x8d8477);
+
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    const y = islandH(x,z);
+    pos.setY(i, y);
+
+    if(y < -0.4){                                   // under water: reef sand → weed
+      c.copy(WET).lerp(new THREE.Color(0x7fa08c), sstep(-2,-15,y));
+    } else if(y < 2.6){                             // the beach itself
+      c.copy(WET).lerp(SAND, sstep(-0.4, 1.2, y));
+    } else if(y < 9){                               // dune grass creeping down
+      c.copy(SAND).lerp(GRASS, sstep(2.6, 7.5, y));
+    } else if(y < 30){
+      c.copy(GRASS).lerp(DEEPG, sstep(9, 26, y));
+    } else {
+      c.copy(DEEPG).lerp(ROCK, sstep(30, 52, y));
+    }
+    /* Mottle so the big flat greens do not read as plastic. Two octaves —
+       one alone gives the hillside a regular checkerboard.
+       Both octaves stay well below the vertex spacing's Nyquist limit — push
+       the frequency any higher and the hillside moirés into contour rings. */
+    const n = 0.95 + 0.050*Math.sin(x*0.26)*Math.cos(z*0.31)
+                   + 0.045*Math.sin(x*0.11+2.1)*Math.cos(z*0.09-0.8);
+    col[i*3] = c.r*n; col[i*3+1] = c.g*n; col[i*3+2] = c.b*n;
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(col,3));
+  g.computeVertexNormals();
+
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+    vertexColors:true, roughness:0.96, metalness:0
+  }));
+  m.receiveShadow = true;
+  scene.add(m);
+})();
+
+/* --- distant scenery islands, purely for the horizon ------------------- */
+(function buildFarIslands(){
+  const mk = (x,z,w,h,col)=>{
+    const g = new THREE.ConeGeometry(w, h, 7, 1);
+    /* squash and skew so they do not read as a row of identical cones */
+    g.scale(1, 1, 0.72 + rnd()*0.5);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({color:col, roughness:1, flatShading:true}));
+    m.position.set(x, h/2 - 6, z);
+    m.rotation.y = rnd()*3;
+    scene.add(m);
+  };
+  mk(-1450,  -900, 300, 210, 0x6f8f9c);
+  mk(-1180, -1050, 190, 130, 0x7d9aa6);
+  mk( 1550,  -820, 260, 300, 0x5f7f8e);   // the volcano
+  mk( 1720,  -700, 150,  95, 0x789aa6);
+  mk(  650, -1650, 340, 160, 0x86a2ad);
+  mk(-1700,   700, 240, 120, 0x7f9ba8);
+})();
+
+/* -------------------------------------------------------- 5. the scenery */
+
+const SCENERY = new THREE.Group(); scene.add(SCENERY);
+
+/* --- shared materials -------------------------------------------------- */
+const barkTex = (()=>{
+  const c = mkCanvas(64,256), g = c.getContext("2d");
+  g.fillStyle = "#9d7a52"; g.fillRect(0,0,64,256);
+  for(let i=0;i<26;i++){                       // the stacked rings of a palm
+    const y = i*10 + Math.random()*3;
+    g.fillStyle = `rgba(90,64,40,${0.18+Math.random()*0.22})`;
+    g.fillRect(0, y, 64, 3.5);
+    g.fillStyle = "rgba(220,196,158,0.25)";
+    g.fillRect(0, y+3.5, 64, 1.6);
+  }
+  return tex(c);
+})();
+
+const MAT = {
+  bark   : new THREE.MeshStandardMaterial({map:barkTex, roughness:0.92}),
+  frond  : new THREE.MeshStandardMaterial({vertexColors:true, roughness:0.78, side:THREE.DoubleSide}),
+  wood   : new THREE.MeshStandardMaterial({color:0xb98a5a, roughness:0.85}),
+  darkw  : new THREE.MeshStandardMaterial({color:0x7d5636, roughness:0.9}),
+  thatch : null,   // built below, needs its texture
+  white  : new THREE.MeshStandardMaterial({color:0xfdf8ee, roughness:0.7}),
+  coral  : new THREE.MeshStandardMaterial({color:0xff6b5e, roughness:0.6}),
+  teal   : new THREE.MeshStandardMaterial({color:0x22b2c4, roughness:0.6}),
+  glass  : new THREE.MeshStandardMaterial({color:0x9fdcf2, roughness:0.05, metalness:0.4,
+                                           transparent:true, opacity:0.45}),
+  metal  : new THREE.MeshStandardMaterial({color:0xc9ced4, roughness:0.35, metalness:0.8}),
+  dark   : new THREE.MeshStandardMaterial({color:0x2b3540, roughness:0.6, metalness:0.3}),
+  poolwtr: new THREE.MeshStandardMaterial({color:0x36c8e0, roughness:0.1, metalness:0.3,
+                                           transparent:true, opacity:0.8}),
+};
+MAT.thatch = (()=>{
+  const c = mkCanvas(128), g = c.getContext("2d");
+  g.fillStyle = "#c9a25e"; g.fillRect(0,0,128,128);
+  for(let i=0;i<420;i++){
+    g.strokeStyle = `rgba(${120+Math.random()*90|0},${86+Math.random()*70|0},40,0.5)`;
+    g.lineWidth = 1 + Math.random();
+    const x = Math.random()*128, y = Math.random()*128;
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x + (Math.random()-0.5)*8, y + 6 + Math.random()*10); g.stroke();
+  }
+  return new THREE.MeshStandardMaterial({map:tex(c,3,2), roughness:0.95});
+})();
+
+function addProp(mesh, cast=true, receive=true){
+  mesh.castShadow = cast; mesh.receiveShadow = receive;
+  SCENERY.add(mesh); return mesh;
+}
+
+/* --- palm trees -------------------------------------------------------- */
+/* A palm is exactly two meshes: a bent trunk and one merged crown. Building
+   the crown as a single BufferGeometry instead of ten frond meshes is what
+   keeps sixty palms from costing six hundred draw calls. */
+function trunkGeo(h, lean){
+  const g = new THREE.CylinderGeometry(0.19, 0.44, h, 8, 10);
+  g.translate(0, h/2, 0);
+  const p = g.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const t = p.getY(i)/h;
+    p.setX(i, p.getX(i) + lean*t*t*h*0.16);
+    p.setZ(i, p.getZ(i) + lean*0.35*t*t*h*0.16);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+function crownGeo(seed){
+  const R = mulberry(seed);
+  const pos=[], col=[], idx=[];
+  const N = 9 + (R()*3|0);
+  for(let f=0; f<N; f++){
+    const a     = (f/N)*Math.PI*2 + R()*0.35;
+    const len   = 4.1 + R()*1.9;
+    const droop = 2.4 + R()*1.9;
+    const SEG   = 6;
+    const base  = pos.length/3;
+    const px = -Math.sin(a), pz = Math.cos(a);
+    const shade = 0.85 + R()*0.3;
+    for(let s=0; s<=SEG; s++){
+      const t  = s/SEG;
+      const r  = len*t;
+      const y  = Math.sin(t*Math.PI*0.8)*1.15 - droop*t*t;       // lifts, then falls
+      const w  = 0.66*Math.sin(Math.PI*Math.min(1,t*1.18))*(1-t*0.3) + 0.05;
+      const cx = Math.cos(a)*r, cz = Math.sin(a)*r;
+      pos.push(cx - px*w, y, cz - pz*w,  cx + px*w, y, cz + pz*w);
+      const gr = (0.44 + 0.20*t) * shade;
+      col.push(0.10, gr, 0.15,   0.10, gr*0.9, 0.15);
+    }
+    for(let s=0;s<SEG;s++){
+      const a0=base+s*2, b0=a0+1, a1=a0+2, b1=a0+3;
+      idx.push(a0,a1,b0,  b0,a1,b1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute("color",    new THREE.Float32BufferAttribute(col,3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+const TRUNKS = [trunkGeo(9,0.5), trunkGeo(12,-0.35), trunkGeo(7.5,0.85), trunkGeo(14,0.15)];
+const CROWNS = [crownGeo(11), crownGeo(23), crownGeo(37), crownGeo(51)];
+const COCO   = new THREE.SphereGeometry(0.3, 7, 6);
+const cocoMat= new THREE.MeshStandardMaterial({color:0x6b4a2c, roughness:0.9});
+
+const palmWind = [];        // crowns nod in the breeze
+function palm(x, z, s){
+  const i = rnd()*4|0, j = rnd()*4|0;
+  const g = new THREE.Group();
+  g.position.set(x, islandH(x,z) - 0.3, z);
+  g.scale.setScalar(s);
+  g.rotation.y = rnd()*6.28;
+
+  const tr = new THREE.Mesh(TRUNKS[i], MAT.bark);
+  tr.castShadow = true; g.add(tr);
+
+  /* the crown must sit on the *bent* tip of the trunk, not on the axis */
+  const h = [9,12,7.5,14][i], lean = [0.5,-0.35,0.85,0.15][i];
+  const tipX = lean*h*0.16, tipZ = lean*0.35*h*0.16;
+
+  const cr = new THREE.Mesh(CROWNS[j], MAT.frond);
+  cr.position.set(tipX, h, tipZ);
+  cr.castShadow = true;
+  g.add(cr);
+  palmWind.push({m:cr, ph:rnd()*6.28, amp:0.035+rnd()*0.03});
+
+  if(rnd() < 0.6){
+    for(let k=0;k<3;k++){
+      const co = new THREE.Mesh(COCO, cocoMat);
+      co.position.set(tipX + Math.cos(k*2.1)*0.5, h-0.45, tipZ + Math.sin(k*2.1)*0.5);
+      g.add(co);
+    }
+  }
+  SCENERY.add(g);
+}
+
+/* --- scatter helper: sample the terrain, keep what lands in the band --- */
+function scatter(count, minH, maxH, fn, maxR){
+  let placed = 0, guard = 0;
+  while(placed < count && guard++ < count*60){
+    const a = rnd()*Math.PI*2, r = Math.sqrt(rnd())*(maxR||250);
+    const x = Math.cos(a)*r, z = Math.sin(a)*r;
+    const h = islandH(x,z);
+    if(h < minH || h > maxH) continue;
+    fn(x, z, h); placed++;
+  }
+}
+
+scatter(78, 0.9, 26, (x,z)=> palm(x, z, 0.75 + rnd()*0.7), 260);
+
+/* --- low shrubs and beach grass, in clumps ----------------------------- */
+const bushGeo = new THREE.IcosahedronGeometry(1, 0);
+scatter(150, 1.6, 40, (x,z,h)=>{
+  const b = new THREE.Mesh(bushGeo, new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(0.28 + rnd()*0.07, 0.45 + rnd()*0.2, 0.30 + rnd()*0.14),
+    roughness:0.9, flatShading:true
+  }));
+  b.position.set(x, h + 0.4, z);
+  b.scale.set(1 + rnd()*1.6, 0.7 + rnd()*0.8, 1 + rnd()*1.6);
+  b.rotation.y = rnd()*6;
+  addProp(b);
+}, 265);
+
+/* --- the resort ------------------------------------------------------- */
+/* Everything hangs off one shore point, so moving RESORT_BEARING relocates
+   the whole village, pier and all. */
+const RESORT_BEARING = 1.05;
+const SHORE = shorePoint(RESORT_BEARING);
+const OUT   = new THREE.Vector2(Math.cos(RESORT_BEARING), Math.sin(RESORT_BEARING)); // seaward
+const SIDE  = new THREE.Vector2(-OUT.y, OUT.x);                                      // along the beach
+
+/* resort-local coordinates: u out to sea, v along the beach */
+const R2W = (u,v)=> new THREE.Vector2(
+  SHORE.x + OUT.x*u + SIDE.x*v,
+  SHORE.z + OUT.y*u + SIDE.y*v
+);
+
+function boxMesh(w,h,d, x,y,z, m){
+  const b = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m);
+  b.position.set(x,y,z);
+  return addProp(b);
+}
+
+/* --- a thatched hut on stilts ----------------------------------------- */
+function hut(x, z, size, rotY, overWater){
+  const g = new THREE.Group();
+  const ground = overWater ? 0 : islandH(x,z);
+  const deckY  = overWater ? 3.0 : ground + 1.5;
+  g.position.set(x, 0, z); g.rotation.y = rotY;
+  SCENERY.add(g);
+
+  const w = 5.4*size, d = 4.6*size;
+
+  /* stilts, each cut to the ground beneath it */
+  const legGeo = new THREE.CylinderGeometry(0.16,0.19,1,6);
+  for(const [sx,sz] of [[-1,-1],[1,-1],[-1,1],[1,1]]){
+    const lx = sx*w/2*0.85, lz = sz*d/2*0.85;
+    const wx = x + Math.cos(rotY)*lx + Math.sin(rotY)*lz;
+    const wz = z - Math.sin(rotY)*lx + Math.cos(rotY)*lz;
+    const foot = overWater ? -3.5 : islandH(wx,wz) - 0.6;
+    const len  = deckY - foot;
+    const l = new THREE.Mesh(legGeo, MAT.darkw);
+    l.scale.y = len; l.position.set(lx, foot + len/2, lz);
+    l.castShadow = true; g.add(l);
+  }
+
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(w+1.4, 0.28, d+1.4), MAT.wood);
+  deck.position.y = deckY; deck.castShadow = deck.receiveShadow = true; g.add(deck);
+
+  /* walls: three solid, one open with a doorway either side */
+  const wallH = 2.5*size, wallY = deckY + wallH/2 + 0.14;
+  const wm = new THREE.MeshStandardMaterial({color: [0xfdf3e0,0xffe0cf,0xdff0ef][rnd()*3|0], roughness:0.85});
+  const back = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, 0.16), wm);
+  back.position.set(0, wallY, -d/2); back.castShadow = true; g.add(back);
+  for(const s of [-1,1]){
+    const side = new THREE.Mesh(new THREE.BoxGeometry(0.16, wallH, d), wm);
+    side.position.set(s*w/2, wallY, 0); side.castShadow = true; g.add(side);
+  }
+  for(const s of [-1,1]){
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(w*0.3, wallH, 0.16), wm);
+    fr.position.set(s*w*0.35, wallY, d/2); fr.castShadow = true; g.add(fr);
+  }
+  /* a lit window on the back wall */
+  const win = new THREE.Mesh(new THREE.PlaneGeometry(1.5*size, 1.0*size), MAT.glass);
+  win.position.set(0, wallY, -d/2 - 0.09); win.rotation.y = Math.PI; g.add(win);
+
+  /* thatched pyramid roof with a deep overhang */
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(w*0.92, 2.4*size, 4, 1), MAT.thatch);
+  roof.rotation.y = Math.PI/4;
+  roof.position.y = deckY + wallH + 1.2*size + 0.14;
+  roof.castShadow = true; g.add(roof);
+
+  /* ladder or steps down to the sand / water */
+  const st = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.14, 2.6), MAT.wood);
+  st.position.set(0, deckY - 0.6, d/2 + 1.5); st.rotation.x = 0.32;
+  st.castShadow = true; g.add(st);
+
+  return {g, deckY, w:w+1.4, d:d+1.4, rotY, x, z};
+}
+
+/* --- the pier, the over-water bungalows and the helipad ---------------- */
+/* Flat things you can land on. Stored as oriented rectangles (or discs)
+   rather than world-aligned boxes, because the pier runs off at 60° and an
+   AABB around it would let you "land" on open water beside the planks. */
+const PLATFORMS = [];
+function addPlatform(cx, cz, w, d, y, name, rot){
+  PLATFORMS.push({cx, cz, hw:w/2, hd:d/2, y, name, rot:rot||0, disc:false});
+  return PLATFORMS[PLATFORMS.length-1];
+}
+function addPad(cx, cz, r, y, name){
+  PLATFORMS.push({cx, cz, hw:r, hd:r, y, name, rot:0, disc:true});
+  return PLATFORMS[PLATFORMS.length-1];
+}
+function onPlatform(p, x, z){
+  const dx = x - p.cx, dz = z - p.cz;
+  if(p.disc) return dx*dx + dz*dz <= p.hw*p.hw;
+  const c = Math.cos(p.rot), s = Math.sin(p.rot);
+  return Math.abs(dx*c - dz*s) <= p.hw && Math.abs(dx*s + dz*c) <= p.hd;
+}
+
+const PIER_Y = 3.0;
+const PIER_LEN = 96;
+let HELIPAD = null;
+
+(function buildPier(){
+  const plankTex = (()=>{
+    const c = mkCanvas(128), g = c.getContext("2d");
+    g.fillStyle = "#c79663"; g.fillRect(0,0,128,128);
+    for(let i=0;i<9;i++){
+      g.fillStyle = `rgba(${140+Math.random()*50|0},${100+Math.random()*40|0},60,0.5)`;
+      g.fillRect(0, i*14.2, 128, 12.4);
+      g.fillStyle = "rgba(70,48,28,0.55)";
+      g.fillRect(0, i*14.2 + 12.4, 128, 1.8);
+    }
+    return tex(c, 3, 14);
+  })();
+  const plankMat = new THREE.MeshStandardMaterial({map:plankTex, roughness:0.88});
+
+  /* the walkway starts a little inland and runs out over the reef */
+  const start = -18, end = PIER_LEN;
+  const mid   = (start+end)/2;
+  const c     = R2W(mid, 0);
+  const pierRot = Math.atan2(OUT.x, OUT.y);
+  const deck  = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.3, end-start), plankMat);
+  deck.position.set(c.x, PIER_Y, c.y);
+  deck.rotation.y = pierRot;
+  deck.receiveShadow = deck.castShadow = true;
+  SCENERY.add(deck);
+  addPlatform(c.x, c.y, 6.4, end-start, PIER_Y + 0.15, "the pier", pierRot);
+
+  /* pilings */
+  const pileGeo = new THREE.CylinderGeometry(0.24,0.3,1,7);
+  for(let u=start+3; u<end; u+=7){
+    for(const v of [-2.7, 2.7]){
+      const p = R2W(u,v);
+      const foot = Math.min(-3.6, islandH(p.x,p.y) - 0.5);
+      const len  = PIER_Y - foot;
+      const m = new THREE.Mesh(pileGeo, MAT.darkw);
+      m.scale.y = len; m.position.set(p.x, foot + len/2, p.y);
+      m.castShadow = true; SCENERY.add(m);
+    }
+  }
+  /* rope handrail: posts with a slack line between them */
+  const ropeMat = new THREE.LineBasicMaterial({color:0xefe0c0});
+  for(const v of [-3.1, 3.1]){
+    const pts = [];
+    for(let u=start+2; u<=end-2; u+=3.5){
+      const p = R2W(u,v);
+      pts.push(new THREE.Vector3(p.x, PIER_Y + 1.0 + Math.sin(u*0.9)*0.12, p.y));
+      if((u-start) % 14 < 3.5){
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.12,1.2,6), MAT.darkw);
+        post.position.set(p.x, PIER_Y + 0.6, p.y); post.castShadow = true; SCENERY.add(post);
+      }
+    }
+    const lg = new THREE.BufferGeometry().setFromPoints(pts);
+    SCENERY.add(new THREE.Line(lg, ropeMat));
+  }
+
+  /* --- the helipad at the pier head --------------------------------- */
+  const pc = R2W(end + 12, 0);
+  const padR = 13;
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(padR, padR, 0.5, 40), plankMat);
+  pad.position.set(pc.x, PIER_Y, pc.y);
+  pad.receiveShadow = pad.castShadow = true; SCENERY.add(pad);
+  for(let i=0;i<12;i++){
+    const a = i/12*6.283;
+    const foot = -4.2, len = PIER_Y - foot;
+    const m = new THREE.Mesh(pileGeo, MAT.darkw);
+    m.scale.y = len;
+    m.position.set(pc.x + Math.cos(a)*(padR-1.4), foot+len/2, pc.y + Math.sin(a)*(padR-1.4));
+    m.castShadow = true; SCENERY.add(m);
+  }
+  /* painted circle + H */
+  const padPaint = (()=>{
+    const c2 = mkCanvas(256), g = c2.getContext("2d");
+    g.clearRect(0,0,256,256);
+    g.strokeStyle = "#fdf8ee"; g.lineWidth = 9;
+    g.beginPath(); g.arc(128,128,92,0,6.2832); g.stroke();
+    g.lineWidth = 20; g.lineCap = "butt"; g.strokeStyle = "#fdf8ee";
+    g.beginPath(); g.moveTo(92,72); g.lineTo(92,184); g.moveTo(164,72); g.lineTo(164,184);
+    g.moveTo(92,128); g.lineTo(164,128); g.stroke();
+    return new THREE.CanvasTexture(c2);
+  })();
+  const paint = new THREE.Mesh(new THREE.CircleGeometry(padR-0.3, 40),
+    new THREE.MeshStandardMaterial({map:padPaint, transparent:true, roughness:0.8}));
+  paint.rotation.x = -Math.PI/2;
+  paint.position.set(pc.x, PIER_Y + 0.27, pc.y);
+  SCENERY.add(paint);
+
+  HELIPAD = {x:pc.x, z:pc.y, y:PIER_Y + 0.25, r:padR};
+  addPad(pc.x, pc.y, padR - 0.6, PIER_Y + 0.25, "the helipad");
+
+  /* Over-water bungalows hanging off both sides of the walkway. Deliberately
+     NOT landable — a canopy coming down between them is a splashdown, which
+     is a much better outcome than the jumper standing inside a wall. */
+  for(let i=0;i<4;i++){
+    const u = 26 + i*17, v = (i%2 ? 1 : -1) * 12;
+    const p = R2W(u, v);
+    hut(p.x, p.y, 1.0, pierRot + (i%2?1:-1)*1.57, true);
+    /* a little jetty joining it to the pier */
+    const jc = R2W(u, v/2);
+    const j = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(v), 0.24, 2.2), plankMat);
+    j.position.set(jc.x, PIER_Y, jc.y);
+    j.rotation.y = pierRot;
+    j.receiveShadow = true; SCENERY.add(j);
+  }
+})();
+
+/* --- beach village: huts, pool, umbrellas, loungers -------------------- */
+(function buildVillage(){
+  for(let i=0;i<7;i++){
+    const v = (i-3)*17 + rr(-4,4);
+    const u = -30 - Math.abs(i-3)*6 + rr(-8,8);
+    const p = R2W(u, v);
+    if(islandH(p.x,p.y) < 0.6) continue;
+    hut(p.x, p.y, 0.9 + rnd()*0.5, Math.atan2(OUT.x,OUT.y) + rr(-0.3,0.3), false);
+  }
+
+  /* infinity pool just behind the beach */
+  const pp = R2W(-38, 6);
+  const py = islandH(pp.x, pp.y);
+  const deck = boxMesh(26, 0.6, 17, pp.x, py + 0.6, pp.y, MAT.white);
+  deck.rotation.y = Math.atan2(OUT.x, OUT.y);
+  const water = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 11), MAT.poolwtr);
+  water.position.set(pp.x, py + 0.95, pp.y);
+  water.rotation.y = deck.rotation.y;
+  SCENERY.add(water);
+
+  /* parasols, in a neat row down the sand */
+  const brolly = (x,z,c1,c2)=>{
+    const g = new THREE.Group();
+    g.position.set(x, islandH(x,z), z);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,3.2,6), MAT.white);
+    pole.position.y = 1.6; pole.castShadow = true; g.add(pole);
+    /* alternating gores, drawn as a striped canvas on a cone */
+    const c = mkCanvas(128,32), gg = c.getContext("2d");
+    for(let i=0;i<8;i++){ gg.fillStyle = i%2 ? c1 : c2; gg.fillRect(i*16,0,16,32); }
+    const top = new THREE.Mesh(new THREE.ConeGeometry(2.1, 0.95, 16, 1),
+      new THREE.MeshStandardMaterial({map:new THREE.CanvasTexture(c), roughness:0.8, side:THREE.DoubleSide}));
+    top.position.y = 3.1; top.castShadow = true; g.add(top);
+    SCENERY.add(g);
+  };
+  const cols = [["#ff6b5e","#fff6e6"], ["#22b2c4","#fff6e6"], ["#ffc247","#ff6b5e"]];
+  for(let i=0;i<11;i++){
+    const p = R2W(-9 + rr(-3,3), (i-5)*13 + rr(-3,3));
+    if(islandH(p.x,p.y) < 0.5 || islandH(p.x,p.y) > 3.4) continue;
+    const c = cols[i%3];
+    brolly(p.x, p.y, c[0], c[1]);
+    /* two loungers under each */
+    for(const s of [-1.7, 1.7]){
+      const q = R2W(-9 + s*0.4, (i-5)*13 + s);
+      const l = boxMesh(2.2, 0.32, 0.85, q.x, islandH(q.x,q.y) + 0.5, q.y, MAT.white);
+      l.rotation.y = Math.atan2(OUT.x,OUT.y) + rr(-0.2,0.2);
+      const back = boxMesh(0.9, 0.3, 0.85, 0,0,0, MAT.white);
+      SCENERY.remove(back);
+      back.position.set(-0.7, 0.4, 0); back.rotation.z = 0.75;
+      l.add(back);
+    }
+  }
+
+  /* bunting between two palms at the top of the beach */
+  const b0 = R2W(-4, -46), b1 = R2W(-4, -22);
+  const from = new THREE.Vector3(b0.x, islandH(b0.x,b0.y)+8, b0.y);
+  const to   = new THREE.Vector3(b1.x, islandH(b1.x,b1.y)+8, b1.y);
+  const flagCols = [0xff6b5e, 0xffc247, 0x22b2c4, 0x7ed957, 0xff9ad5];
+  for(let i=1;i<16;i++){
+    const t = i/16;
+    const p = from.clone().lerp(to, t);
+    p.y -= Math.sin(t*Math.PI)*2.2;                   // the sag in the line
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.9, 3),
+      new THREE.MeshStandardMaterial({color:flagCols[i%5], roughness:0.7, side:THREE.DoubleSide}));
+    f.position.copy(p); f.position.y -= 0.5; f.rotation.x = Math.PI;
+    SCENERY.add(f);
+  }
+})();
+
+/* --- boats ------------------------------------------------------------- */
+function boatHull(len, beam, col){
+  const s = new THREE.Shape();
+  s.moveTo(0, len*0.5);
+  s.quadraticCurveTo( beam*0.9,  len*0.1,  beam*0.72, -len*0.42);
+  s.lineTo(-beam*0.72, -len*0.42);
+  s.quadraticCurveTo(-beam*0.9,  len*0.1,  0, len*0.5);
+  const g = new THREE.ExtrudeGeometry(s, {depth:beam*0.85, bevelEnabled:true,
+    bevelSize:beam*0.10, bevelThickness:beam*0.10, bevelSegments:2, curveSegments:10});
+  g.rotateX(-Math.PI/2);
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({color:col, roughness:0.55}));
+  m.castShadow = true;
+  return m;
+}
+
+const FLOATERS = [];   // things that bob with the swell
+function sailboat(x, z, ry, hullCol, sailCol){
+  const g = new THREE.Group();
+  g.position.set(x, 0, z); g.rotation.y = ry;
+  const hull = boatHull(9, 2.6, hullCol);
+  hull.position.y = -0.4; g.add(hull);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.16, 5.4), MAT.white);
+  deck.position.y = 1.5; g.add(deck);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.13,10,7), MAT.white);
+  mast.position.set(0, 6.2, 0.4); mast.castShadow = true; g.add(mast);
+  const sail = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 8.2),
+    new THREE.MeshStandardMaterial({color:sailCol, roughness:0.85, side:THREE.DoubleSide}));
+  sail.position.set(1.5, 6.0, -0.6); sail.rotation.y = -0.22;
+  sail.castShadow = true; g.add(sail);
+  const jib = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 5.6),
+    new THREE.MeshStandardMaterial({color:0xfff1dd, roughness:0.85, side:THREE.DoubleSide}));
+  jib.position.set(-0.9, 4.6, 2.6); jib.rotation.y = 0.3; g.add(jib);
+  scene.add(g);
+  FLOATERS.push({g, ph:rnd()*6.28, roll:0.05+rnd()*0.05});
+  return g;
+}
+
+sailboat( 250, -170,  0.8, 0xfdf8ee, 0xff6b5e);
+sailboat(-215,  195, -1.9, 0x22b2c4, 0xfff6e6);
+sailboat( 120,  300,  2.4, 0xffc247, 0xfff6e6);
+
+/* a little runabout that motors round the island, dragging a wake */
+const speedboat = (()=>{
+  const g = new THREE.Group();
+  const hull = boatHull(6.4, 2.2, 0xfdf8ee);
+  hull.position.y = -0.25; g.add(hull);
+  g.add(boxMesh(1.7,0.7,2.0, 0, 1.35, -0.6, MAT.teal));
+  const wakeMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.42,
+                                               depthWrite:false});
+  for(const s of [-1,1]){
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 26), wakeMat);
+    w.rotation.x = -Math.PI/2; w.rotation.z = s*0.09;
+    w.position.set(s*1.6, 0.22, -14);
+    g.add(w);
+  }
+  scene.add(g);
+  return {g, a: 0.0, r: 330};
+})();
+
+/* --- seagulls ---------------------------------------------------------- */
+const BIRDS = [];
+(function buildBirds(){
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute([
+    0,0,0,  -1.5,0.35,-0.7,  -1.35,0,0.35,      // left wing
+    0,0,0,   1.35,0,0.35,     1.5,0.35,-0.7,    // right wing
+  ],3));
+  g.computeVertexNormals();
+  const m = new THREE.MeshStandardMaterial({color:0xfdf8ee, side:THREE.DoubleSide, roughness:0.8});
+  for(let i=0;i<11;i++){
+    const b = new THREE.Mesh(g, m);
+    b.scale.setScalar(1.1 + rnd()*0.9);
+    scene.add(b);
+    BIRDS.push({m:b, r: 90 + rnd()*230, a: rnd()*6.28,
+                spd: (0.10 + rnd()*0.09) * (rnd()<0.5?-1:1),
+                y: 22 + rnd()*70, ph: rnd()*6.28,
+                cx: rr(-90,90), cz: rr(-90,90)});
+  }
+})();
+
+/* --- clouds ------------------------------------------------------------ */
+(function buildClouds(){
+  const c = mkCanvas(256), g = c.getContext("2d");
+  const grad = g.createRadialGradient(128,128,4, 128,128,126);
+  grad.addColorStop(0.00,"rgba(255,255,255,0.98)");
+  grad.addColorStop(0.42,"rgba(252,253,255,0.72)");
+  grad.addColorStop(1.00,"rgba(240,248,255,0)");
+  g.fillStyle = grad; g.fillRect(0,0,256,256);
+  const t = new THREE.CanvasTexture(c);
+  const mat = new THREE.SpriteMaterial({map:t, transparent:true, opacity:0.9, depthWrite:false, fog:true});
+
+  for(let i=0;i<22;i++){
+    const cx = rr(-1500,1500), cz = rr(-1500,1500), cy = rr(190, 460);
+    const sc = rr(50, 130);
+    const puffs = 4 + (rnd()*4|0);
+    for(let p=0;p<puffs;p++){
+      const s = new THREE.Sprite(mat);
+      s.position.set(cx + rr(-sc,sc), cy + rr(-sc*0.16, sc*0.16), cz + rr(-sc*0.7,sc*0.7));
+      const k = sc*rr(0.7,1.5);
+      s.scale.set(k, k*rr(0.45,0.7), 1);
+      scene.add(s);
+    }
+  }
+})();
+
+/* ---------------------------------------------------- 6. the helicopter */
+
+/* A white-and-coral sightseeing machine: bubble canopy, high tail boom,
+   skids. Nothing military about it. */
+function buildHeli(){
+  const g = new THREE.Group();
+  const BODY = new THREE.MeshStandardMaterial({color:0xfdf8ee, roughness:0.42, metalness:0.15});
+  const TRIM = new THREE.MeshStandardMaterial({color:0xff6b5e, roughness:0.45, metalness:0.1});
+
+  /* fuselage: a squashed sphere with a tapered tail cone behind it */
+  const cab = new THREE.Mesh(new THREE.SphereGeometry(1.55, 22, 16), BODY);
+  cab.scale.set(1.0, 0.92, 1.35); cab.position.set(0, 0, -0.2);
+  cab.castShadow = true; g.add(cab);
+
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(1.35, 18, 12), TRIM);
+  belly.scale.set(1.0, 0.42, 1.3); belly.position.set(0, -0.85, -0.1);
+  belly.castShadow = true; g.add(belly);
+
+  /* bubble canopy — the whole point of a tour helicopter */
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(1.42, 20, 14, 0, Math.PI*2, 0, Math.PI*0.62),
+    new THREE.MeshStandardMaterial({color:0x8fd6ef, roughness:0.04, metalness:0.35,
+                                    transparent:true, opacity:0.42, side:THREE.DoubleSide}));
+  glass.scale.set(0.98, 1.15, 1.05);
+  glass.rotation.x = 0.55;
+  glass.position.set(0, 0.15, -1.15);
+  g.add(glass);
+
+  /* side door windows */
+  for(const s of [-1,1]){
+    const w = new THREE.Mesh(new THREE.CircleGeometry(0.6, 16), MAT.glass);
+    w.position.set(s*1.44, 0.15, -0.35);
+    w.rotation.y = s*Math.PI/2;
+    g.add(w);
+  }
+  /* a coral flash down each flank */
+  for(const s of [-1,1]){
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.34), TRIM);
+    f.position.set(s*1.5, -0.42, 0.1); f.rotation.y = s*Math.PI/2;
+    g.add(f);
+  }
+
+  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.19, 6.4, 12), BODY);
+  boom.rotation.x = Math.PI/2; boom.position.set(0, 0.42, 4.0);
+  boom.castShadow = true; g.add(boom);
+
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.5, 1.2), TRIM);
+  fin.position.set(0, 1.1, 6.7); fin.rotation.x = -0.2;
+  fin.castShadow = true; g.add(fin);
+
+  const stab = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.12, 0.75), BODY);
+  stab.position.set(0, 0.5, 6.0); stab.castShadow = true; g.add(stab);
+
+  /* skids */
+  const skidGeo = new THREE.CylinderGeometry(0.09,0.09,5.4,8);
+  for(const s of [-1,1]){
+    const sk = new THREE.Mesh(skidGeo, MAT.metal);
+    sk.rotation.x = Math.PI/2; sk.position.set(s*1.25, -1.85, 0.1);
+    sk.castShadow = true; g.add(sk);
+    for(const zz of [-1.4, 1.3]){
+      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,1.3,6), MAT.metal);
+      strut.position.set(s*0.85, -1.3, zz); strut.rotation.z = s*0.5;
+      strut.castShadow = true; g.add(strut);
+    }
+  }
+
+  /* main rotor: mast, hub, four blades, plus a faint disc so it reads as a
+     spinning plane rather than four loose sticks */
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.16,1.1,10), MAT.metal);
+  mast.position.y = 1.6; g.add(mast);
+
+  const rotor = new THREE.Group(); rotor.position.y = 2.16; g.add(rotor);
+  rotor.add(new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.36,0.28,12), MAT.dark));
+  const bladeGeo = new THREE.BoxGeometry(0.34, 0.06, 8.4);
+  for(let i=0;i<4;i++){
+    const arm = new THREE.Group(); arm.rotation.y = i*Math.PI/2; rotor.add(arm);
+    const b = new THREE.Mesh(bladeGeo, MAT.dark);
+    b.position.z = 4.3; b.rotation.x = 0.05;
+    b.castShadow = true; arm.add(b);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.36,0.07,0.7), TRIM);
+    tip.position.z = 8.1; arm.add(tip);
+  }
+  const blur = new THREE.Mesh(new THREE.CircleGeometry(8.6, 40),
+    new THREE.MeshBasicMaterial({color:0xdfe9ee, transparent:true, opacity:0.16,
+                                 side:THREE.DoubleSide, depthWrite:false}));
+  blur.rotation.x = -Math.PI/2; blur.position.y = 0.02; rotor.add(blur);
+
+  /* tail rotor */
+  const trotor = new THREE.Group(); trotor.position.set(0.32, 1.1, 6.9); g.add(trotor);
+  const th = new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,0.14,8), MAT.dark);
+  th.rotation.z = Math.PI/2; trotor.add(th);
+  for(let i=0;i<3;i++){
+    const arm = new THREE.Group(); arm.rotation.x = i*Math.PI*2/3; trotor.add(arm);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.5, 0.22), MAT.dark);
+    b.position.y = 0.75; arm.add(b);
+  }
+  const tblur = new THREE.Mesh(new THREE.CircleGeometry(1.5, 20),
+    new THREE.MeshBasicMaterial({color:0xdfe9ee, transparent:true, opacity:0.14,
+                                 side:THREE.DoubleSide, depthWrite:false}));
+  tblur.rotation.y = Math.PI/2; trotor.add(tblur);
+
+  /* nav lights */
+  const lamp = (x,y,z,c)=>{
+    const l = new THREE.Mesh(new THREE.SphereGeometry(0.11,8,6),
+      new THREE.MeshBasicMaterial({color:c}));
+    l.position.set(x,y,z); g.add(l); return l;
+  };
+  const lights = [lamp(-1.6,-0.3,-0.6, 0xff3b30), lamp(1.6,-0.3,-0.6, 0x2fe07a),
+                  lamp(0, 1.72, 6.9, 0xffffff)];
+
+  /* a pilot silhouette in the left seat, so it never looks unmanned */
+  const pilot = new THREE.Group();
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24,12,10),
+    new THREE.MeshStandardMaterial({color:0xe8b98d, roughness:0.85}));
+  head.position.y = 0.62; pilot.add(head);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.26,12,8,0,6.28,0,1.3),
+    new THREE.MeshStandardMaterial({color:0xff6b5e, roughness:0.7}));
+  cap.position.y = 0.66; pilot.add(cap);
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.26,0.3,0.8,10),
+    new THREE.MeshStandardMaterial({color:0x2f6fa8, roughness:0.85}));
+  torso.position.y = 0.05; pilot.add(torso);
+  pilot.position.set(-0.5, -0.35, -0.85);
+  g.add(pilot);
+
+  return {g, rotor, trotor, lights};
+}
+
+const HB = buildHeli();
+scene.add(HB.g);
+
+const heli = {
+  g: HB.g, rotor: HB.rotor, trotor: HB.trotor, lights: HB.lights,
+  vel: new THREE.Vector3(), yaw: 0, spin: 0, rpm: 0,
+};
+
+/* ------------------------------------------ 7. the jumper and the canopy */
+
+/* One rig, re-posed between free fall and canopy flight. `body` carries the
+   whole thing; `limbs` are re-angled rather than animated by a skeleton. */
+function buildJumper(){
+  const g = new THREE.Group();
+  const SUIT   = new THREE.MeshStandardMaterial({color:0xff6b5e, roughness:0.7});
+  const SUIT2  = new THREE.MeshStandardMaterial({color:0x2f6fa8, roughness:0.7});
+  const SKIN   = new THREE.MeshStandardMaterial({color:0xe8b98d, roughness:0.85});
+  const HELM   = new THREE.MeshStandardMaterial({color:0xffc247, roughness:0.35, metalness:0.2});
+
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.26, 0.95, 12), SUIT);
+  torso.castShadow = true; g.add(torso);
+
+  const rig = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.6, 0.30), MAT.dark);   // the container
+  rig.position.set(0, 0.15, -0.28); g.add(rig);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.23, 14, 12), SKIN);
+  head.position.y = 0.72; head.castShadow = true; g.add(head);
+  const helm = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10, 0, 6.283, 0, 1.75), HELM);
+  helm.position.y = 0.74; g.add(helm);
+  const goggles = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.045, 8, 18), MAT.dark);
+  goggles.position.set(0, 0.76, 0.10); goggles.rotation.x = 0.25; g.add(goggles);
+
+  const limb = (len, rx, mat)=>{
+    const j = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.085, len, 8), mat);
+    m.position.y = -len/2; m.castShadow = true;
+    j.add(m);
+    return j;
+  };
+  const armL = limb(0.72, 0, SUIT),  armR = limb(0.72, 0, SUIT);
+  const legL = limb(0.86, 0, SUIT2), legR = limb(0.86, 0, SUIT2);
+  armL.position.set(-0.32, 0.40, 0); armR.position.set(0.32, 0.40, 0);
+  legL.position.set(-0.15,-0.46, 0); legR.position.set(0.15,-0.46, 0);
+  g.add(armL, armR, legL, legR);
+
+  /* boots */
+  for(const [j,s] of [[legL,-1],[legR,1]]){
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.20,0.13,0.34), MAT.dark);
+    b.position.set(0, -0.90, 0.08); j.add(b);
+  }
+
+  return {g, limbs:{armL, armR, legL, legR}};
+}
+
+const JB = buildJumper();
+const jumper = JB.g;
+jumper.visible = false;
+scene.add(jumper);
+
+/* --- the ram-air canopy: nine cells on an arc, with lines --------------- */
+function buildCanopy(){
+  const g = new THREE.Group();
+  const CELLS = 9, SPAN = 8.6, CHORD = 3.4, ARC = 1.15;
+  const cols = [0xff6b5e, 0xffc247, 0xfff6e6, 0x22b2c4, 0x7ed957];
+  const cellGeo = new THREE.BoxGeometry(SPAN/CELLS*0.96, 0.55, CHORD);
+  const anchors = [];
+
+  for(let i=0;i<CELLS;i++){
+    const t = (i/(CELLS-1)) - 0.5;                 // -0.5 … +0.5
+    const a = t*ARC;
+    const m = new THREE.Mesh(cellGeo, new THREE.MeshStandardMaterial({
+      color: cols[i%cols.length], roughness:0.72, side:THREE.DoubleSide
+    }));
+    /* lay the cells on a shallow arc, nose slightly down */
+    m.position.set(Math.sin(a)*(SPAN*0.52), -(1-Math.cos(a))*(SPAN*0.52), 0);
+    m.rotation.z = -a;
+    m.castShadow = true;
+    g.add(m);
+    if(i===0 || i===CELLS-1 || i===((CELLS-1)>>1)) anchors.push(m.position.clone());
+  }
+
+  /* rounded nose and tail so the cells do not read as a row of bricks */
+  for(const s of [-1, 1]){
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, SPAN*0.98, 10, 1, false),
+      new THREE.MeshStandardMaterial({color:0xfff6e6, roughness:0.75}));
+    cap.rotation.z = Math.PI/2;
+    cap.position.set(0, -0.55, s*CHORD*0.5);
+    cap.scale.set(1, 1, 0.8);
+    g.add(cap);
+  }
+
+  /* suspension lines, as one LineSegments — cheap and reads correctly */
+  const pts = [];
+  for(let i=0;i<CELLS;i+=2){
+    const t = (i/(CELLS-1)) - 0.5, a = t*ARC;
+    const x = Math.sin(a)*(SPAN*0.52), y = -(1-Math.cos(a))*(SPAN*0.52);
+    for(const zz of [-CHORD*0.4, CHORD*0.4]){
+      pts.push(x, y-0.3, zz,   x*0.13, -6.4, zz*0.16);
+    }
+  }
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute("position", new THREE.Float32BufferAttribute(pts,3));
+  g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({color:0xf2ead9})));
+
+  g.visible = false;
+  return g;
+}
+const canopy = buildCanopy();
+scene.add(canopy);
+
+/* the pilot chute / bridle flash when the canopy first snatches */
+const player = {
+  pos: new THREE.Vector3(),
+  vel: new THREE.Vector3(),
+  yaw: 0,
+  chuteT: 0,            // 0 → 1 inflation
+  flare: 0,
+};
+
+/* The camera's own heading during free fall. Held apart from player.yaw so
+   that steering the jumper cannot swing the frame the steering is measured
+   in — see freefall(). Only the mouse changes it. */
+let freeYaw = 0;
+
+/* -------------------------------------------- 8. drop zones and effects */
+
+/* Painted bullseye + a soft light column, so you can find the zone from
+   three hundred metres up. */
+function buildMarker(){
+  const g = new THREE.Group();
+
+  const paint = (()=>{
+    const c = mkCanvas(256), x = c.getContext("2d");
+    const ring = (r, col)=>{ x.fillStyle = col; x.beginPath(); x.arc(128,128,r,0,6.2832); x.fill(); };
+    ring(126, "rgba(255,250,240,0.95)");
+    ring(100, "rgba(255,107,94,0.95)");
+    ring( 74, "rgba(255,250,240,0.95)");
+    ring( 48, "rgba(255,107,94,0.95)");
+    ring( 22, "rgba(255,194,71,1)");
+    return new THREE.CanvasTexture(c);
+  })();
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(9, 48),
+    new THREE.MeshBasicMaterial({map:paint, transparent:true, opacity:0.9, depthWrite:false}));
+  disc.rotation.x = -Math.PI/2;
+  disc.renderOrder = 3;
+  g.add(disc);
+
+  /* A sunbeam, not a grey pipe: additive, and faded out along its length by an
+     alpha ramp so the top dissolves into the sky instead of ending in mid-air. */
+  const ramp = (()=>{
+    const c = mkCanvas(4, 128), x = c.getContext("2d");
+    const gr = x.createLinearGradient(0,0,0,128);
+    gr.addColorStop(0.00, "rgba(255,255,255,0)");     // top
+    gr.addColorStop(0.45, "rgba(255,255,255,0.35)");
+    gr.addColorStop(1.00, "rgba(255,255,255,1)");     // base
+    x.fillStyle = gr; x.fillRect(0,0,4,128);
+    return new THREE.CanvasTexture(c);
+  })();
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(5.0, 9.6, 150, 26, 1, true),
+    new THREE.MeshBasicMaterial({map:ramp, color:0xffcf6b, transparent:true, opacity:0.16,
+                                 side:THREE.DoubleSide, depthWrite:false,
+                                 blending:THREE.AdditiveBlending}));
+  beam.position.y = 75;
+  g.add(beam);
+
+  /* a slowly turning halo at head height, visible from directly above */
+  const halo = new THREE.Mesh(new THREE.RingGeometry(10, 11.4, 40),
+    new THREE.MeshBasicMaterial({color:0xffc247, transparent:true, opacity:0.55,
+                                 side:THREE.DoubleSide, depthWrite:false}));
+  halo.rotation.x = -Math.PI/2; halo.position.y = 1.2;
+  g.add(halo);
+
+  scene.add(g);
+  return {g, disc, beam, halo};
+}
+const marker = buildMarker();
+
+/* --- the golden rings you fall through -------------------------------- */
+const RINGS = [];
+/* Big on purpose. They have to be findable from three hundred metres up and
+   forgiving enough that a bonus stays a bonus. */
+const RING_R = 10;
+const ringGeo = new THREE.TorusGeometry(RING_R, 0.85, 10, 36);
+const ringMat = new THREE.MeshStandardMaterial({color:0xffc247, roughness:0.35, metalness:0.5,
+                                                emissive:0x6b4200});
+const ringMatGot = new THREE.MeshStandardMaterial({color:0x7ed957, roughness:0.4, metalness:0.3,
+                                                   emissive:0x1d5a1d, transparent:true, opacity:0.35});
+for(let i=0;i<5;i++){
+  const m = new THREE.Mesh(ringGeo, ringMat);
+  m.rotation.x = Math.PI/2;
+  m.visible = false;
+  scene.add(m);
+  RINGS.push({m, got:false, x:0, y:0, z:0});
+}
+
+/* --- particles: splash, sand puff, ring sparkle ------------------------ */
+const FX = [];
+const fxGeo = new THREE.SphereGeometry(0.32, 6, 5);
+function burst(pos, colour, n, speed, up, life){
+  for(let i=0;i<n;i++){
+    const m = new THREE.Mesh(fxGeo, new THREE.MeshBasicMaterial({
+      color:colour, transparent:true, opacity:0.95, depthWrite:false}));
+    m.position.copy(pos);
+    m.scale.setScalar(rr(0.6,2.2));
+    scene.add(m);
+    FX.push({m,
+      v: new THREE.Vector3(rr(-1,1), rr(0.4,1.4)*up, rr(-1,1)).normalize().multiplyScalar(speed*rr(0.5,1.3)),
+      t: life||1.1, max: life||1.1});
+  }
+}
+function updateFX(dt){
+  for(let i=FX.length-1;i>=0;i--){
+    const f = FX[i];
+    f.t -= dt;
+    if(f.t <= 0){ scene.remove(f.m); f.m.material.dispose(); FX.splice(i,1); continue; }
+    f.v.y -= 16*dt;
+    f.m.position.addScaledVector(f.v, dt);
+    f.m.material.opacity = 0.95 * (f.t/f.max);
+  }
+}
+
+/* --- surface query: what would I land on at (x,z)? --------------------- */
+const _surf = {y:0, type:"", name:""};
+function surfaceAt(x, z){
+  let best = -Infinity, name = "", type = "";
+  for(const p of PLATFORMS){
+    if(p.y > best && onPlatform(p, x, z)){ best = p.y; name = p.name; type = "deck"; }
+  }
+  const g = islandH(x, z);
+  if(g > best){ best = g; name = g < 2.6 ? "the beach" : "the hillside"; type = "land"; }
+  if(best < 0.15){ best = 0; name = "the lagoon"; type = "water"; }
+  _surf.y = best; _surf.name = name; _surf.type = type;
+  return _surf;
+}
+
+/* --------------------------------------------------------- 9. camera rig */
+
+const cam = {
+  yaw: 0, pitch: 0.22, dist: 20, wantDist: 20,
+  pos: new THREE.Vector3(0, 40, 60),
+  look: new THREE.Vector3(),
+  shake: 0,
+};
+let dragging = false, lastX = 0, lastY = 0;
+
+renderer.domElement.addEventListener("pointerdown", e=>{
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  renderer.domElement.setPointerCapture(e.pointerId);
+});
+renderer.domElement.addEventListener("pointerup", e=>{ dragging = false; });
+renderer.domElement.addEventListener("pointermove", e=>{
+  if(!dragging) return;
+  cam.yaw   -= (e.clientX - lastX) * 0.0055;
+  cam.pitch  = clamp(cam.pitch - (e.clientY - lastY) * 0.004, -0.55, 1.2);
+  lastX = e.clientX; lastY = e.clientY;
+});
+renderer.domElement.addEventListener("wheel", e=>{
+  cam.wantDist = clamp(cam.wantDist + e.deltaY*0.02, 7, 90);
+  e.preventDefault();
+}, {passive:false});
+
+function updateCamera(target, craftYaw, dt){
+  cam.dist = damp(cam.dist, cam.wantDist, 6, dt);
+  /* the orbit offset eases back behind the craft when you let go of the mouse */
+  if(!dragging) cam.yaw = damp(cam.yaw, 0, 1.1, dt);
+
+  const yaw = craftYaw + cam.yaw;
+  const d   = cam.dist;
+  const want = new THREE.Vector3(
+    target.x + Math.sin(yaw) * d * Math.cos(cam.pitch),
+    target.y + d * Math.sin(cam.pitch) + 2.2,
+    target.z + Math.cos(yaw) * d * Math.cos(cam.pitch)
+  );
+  /* never let the camera bury itself in the sand or dunk in the sea */
+  const floor = Math.max(surfaceAt(want.x, want.z).y, 0) + 2.2;
+  if(want.y < floor) want.y = floor;
+
+  cam.pos.lerp(want, 1 - Math.exp(-9*dt));
+  cam.look.lerp(target, 1 - Math.exp(-12*dt));
+
+  camera.position.copy(cam.pos);
+  if(cam.shake > 0){
+    camera.position.x += rr(-1,1)*cam.shake;
+    camera.position.y += rr(-1,1)*cam.shake;
+    cam.shake = Math.max(0, cam.shake - dt*2.2);
+  }
+  camera.lookAt(cam.look);
+}
+
+/* ----------------------------------------------------------- 10. audio */
+
+/* Everything is synthesised: a rotor is a low pulse train, wind is filtered
+   noise, and the canopy opening is a short noise thump. No files to load. */
+const AUDIO = { on:false, ctx:null };
+function initAudio(){
+  if(AUDIO.ctx) return;
+  const C = window.AudioContext || window.webkitAudioContext;
+  if(!C) return;
+  const ctx = new C();
+  AUDIO.ctx = ctx;
+
+  const master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+  AUDIO.master = master;
+
+  /* --- noise bed, shared by wind and rotor wash --- */
+  const buf = ctx.createBuffer(1, ctx.sampleRate*2, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+  AUDIO.noiseBuf = buf;
+
+  const windSrc = ctx.createBufferSource(); windSrc.buffer = buf; windSrc.loop = true;
+  const windF = ctx.createBiquadFilter(); windF.type = "bandpass"; windF.frequency.value = 500; windF.Q.value = 0.7;
+  const windG = ctx.createGain(); windG.gain.value = 0;
+  windSrc.connect(windF).connect(windG).connect(master); windSrc.start();
+  AUDIO.windG = windG; AUDIO.windF = windF;
+
+  /* --- rotor: a sawtooth thump plus a whine --- */
+  const thump = ctx.createOscillator(); thump.type = "sawtooth"; thump.frequency.value = 22;
+  const thumpF = ctx.createBiquadFilter(); thumpF.type = "lowpass"; thumpF.frequency.value = 220;
+  const thumpG = ctx.createGain(); thumpG.gain.value = 0;
+  thump.connect(thumpF).connect(thumpG).connect(master); thump.start();
+
+  const whine = ctx.createOscillator(); whine.type = "triangle"; whine.frequency.value = 430;
+  const whineG = ctx.createGain(); whineG.gain.value = 0;
+  whine.connect(whineG).connect(master); whine.start();
+
+  AUDIO.thump = thump; AUDIO.thumpG = thumpG; AUDIO.whine = whine; AUDIO.whineG = whineG;
+  AUDIO.on = true;
+}
+function beep(freq, dur, vol, type){
+  if(!AUDIO.on) return;
+  const c = AUDIO.ctx, o = c.createOscillator(), g = c.createGain();
+  o.type = type || "sine"; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, c.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
+  o.connect(g).connect(AUDIO.master); o.start(); o.stop(c.currentTime + dur);
+}
+function chime(base){
+  [0, 4, 7, 12].forEach((s,i)=> setTimeout(()=> beep(base*Math.pow(2,s/12), 0.5, 0.16, "triangle"), i*85));
+}
+function thud(vol, freq){
+  if(!AUDIO.on) return;
+  const c = AUDIO.ctx;
+  const s = c.createBufferSource(); s.buffer = AUDIO.noiseBuf;
+  const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = freq||900;
+  const g = c.createGain();
+  g.gain.setValueAtTime(vol, c.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.45);
+  s.connect(f).connect(g).connect(AUDIO.master); s.start(); s.stop(c.currentTime + 0.5);
+}
+function audioTick(dt){
+  if(!AUDIO.on) return;
+  const c = AUDIO.ctx, t = c.currentTime + 0.05;
+  /* rotor volume falls off once you have left the aircraft */
+  const near = state===S.FLY ? 1 : clamp(1 - player.pos.distanceTo(heli.g.position)/160, 0, 1)*0.5;
+  AUDIO.thumpG.gain.setTargetAtTime(0.16*heli.rpm*near, t, 0.15);
+  AUDIO.whineG.gain.setTargetAtTime(0.020*heli.rpm*near, t, 0.15);
+  AUDIO.thump.frequency.setTargetAtTime(17 + heli.rpm*9, t, 0.2);
+  AUDIO.whine.frequency.setTargetAtTime(320 + heli.rpm*220, t, 0.2);
+
+  /* wind rises with airspeed — it is the whole soundtrack of a free fall */
+  const spd = player.vel.length();
+  const w = state===S.FREEFALL ? clamp(spd/55,0,1)*0.42
+          : state===S.CANOPY   ? clamp(spd/20,0,1)*0.13
+          : 0.015;
+  AUDIO.windG.gain.setTargetAtTime(w, t, 0.2);
+  AUDIO.windF.frequency.setTargetAtTime(320 + spd*11, t, 0.25);
+}
+
+/* ----------------------------------- 11. state machine, input, HUD, loop */
+
+const S = { MENU:0, FLY:1, FREEFALL:2, CANOPY:3, DOWN:4 };
+let state = S.MENU;
+
+const DROPS = [
+  {name:"Coral Bay Beach",  pick:()=>{ const p = R2W(-16, 34); return {x:p.x, z:p.y}; }},
+  {name:"The Helipad",      pick:()=>({x:HELIPAD.x, z:HELIPAD.z})},
+  {name:"Lagoon Raft",      pick:()=>({x:RAFT.g.position.x, z:RAFT.g.position.z})},
+  {name:"Sunset Point",     pick:()=>{ /* the flat shoulder below the NW peak */
+                                       let best=null, bd=1e9;
+                                       for(let i=0;i<600;i++){
+                                         const a=rnd()*6.283, r=40+rnd()*70;
+                                         const x=-66+Math.cos(a)*r, z=-58+Math.sin(a)*r;
+                                         const h=islandH(x,z);
+                                         if(h<18||h>30) continue;
+                                         /* prefer flat: compare with neighbours */
+                                         const s = Math.abs(h-islandH(x+5,z)) + Math.abs(h-islandH(x,z+5));
+                                         if(s<bd){ bd=s; best={x,z}; }
+                                       }
+                                       return best || {x:-66, z:-58};
+                                    }},
+];
+
+/* --- the floating raft, which is both scenery and a drop zone ---------- */
+const RAFT = (()=>{
+  const g = new THREE.Group();
+  /* out in the inland lagoon carved by islandH */
+  g.position.set(104, 0, -92);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(11, 0.5, 11), MAT.wood);
+  deck.receiveShadow = deck.castShadow = true; g.add(deck);
+  for(const sx of [-1, 1]){                       // two flotation drums
+    const d = new THREE.Mesh(new THREE.CylinderGeometry(0.8,0.8,10,10), MAT.coral);
+    d.rotation.x = Math.PI/2; d.position.set(sx*4.4, -0.5, 0);
+    g.add(d);
+  }
+  /* a stripy sunshade on four posts */
+  for(const [sx,sz] of [[-1,-1],[1,-1],[-1,1],[1,1]]){
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,3,6), MAT.white);
+    p.position.set(sx*4.2, 1.7, sz*4.2); g.add(p);
+  }
+  const c = mkCanvas(64,64), gg = c.getContext("2d");
+  for(let i=0;i<8;i++){ gg.fillStyle = i%2 ? "#ff6b5e" : "#fff6e6"; gg.fillRect(i*8,0,8,64); }
+  const shade = new THREE.Mesh(new THREE.BoxGeometry(10, 0.2, 10),
+    new THREE.MeshStandardMaterial({map:new THREE.CanvasTexture(c), roughness:0.8}));
+  shade.position.y = 3.2; shade.castShadow = true; g.add(shade);
+  const ladder = new THREE.Mesh(new THREE.BoxGeometry(1.4,0.12,2.4), MAT.wood);
+  ladder.position.set(0,-0.4,6.0); ladder.rotation.x = 0.5; g.add(ladder);
+  scene.add(g);
+  return {g, plat: addPlatform(g.position.x, g.position.z, 11, 11, 0.25, "the lagoon raft")};
+})();
+
+/* --- run state --------------------------------------------------------- */
+const run = {
+  round: 0, score: 0, rings: 0, wind: new THREE.Vector2(),
+  target: new THREE.Vector3(), targetName: "",
+};
+
+/* --- input ------------------------------------------------------------- */
+const keys = {};
+addEventListener("keydown", e=>{
+  if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code)) e.preventDefault();
+  if(e.repeat) return;
+  keys[e.code] = true;
+  initAudio();
+
+  if(e.code === "KeyF" && state === S.FLY)      jumpOut();
+  if(e.code === "Space" && state === S.FREEFALL) openCanopy();
+  if(e.code === "KeyR" && state !== S.MENU)      startRound(run.round);
+});
+addEventListener("keyup", e=>{ keys[e.code] = false; });
+addEventListener("blur", ()=>{ for(const k in keys) keys[k] = false; });
+
+/* on-screen controls for tablets — the stick maps onto the same key flags */
+const touchUI = { x:0, y:0, up:false, down:false };
+(function bindTouch(){
+  if(!matchMedia("(pointer: coarse)").matches) return;
+  document.getElementById("touch").classList.add("on");
+  const stick = document.getElementById("stick"), knob = document.getElementById("knob");
+  let id = null, cx = 0, cy = 0;
+  stick.addEventListener("pointerdown", e=>{
+    id = e.pointerId; const r = stick.getBoundingClientRect();
+    cx = r.left + r.width/2; cy = r.top + r.height/2;
+    stick.setPointerCapture(id); initAudio();
+  });
+  stick.addEventListener("pointermove", e=>{
+    if(e.pointerId !== id) return;
+    const dx = clamp((e.clientX-cx)/54, -1, 1), dy = clamp((e.clientY-cy)/54, -1, 1);
+    touchUI.x = dx; touchUI.y = dy;
+    knob.style.transform = `translate(${dx*38}px, ${dy*38}px)`;
+  });
+  const release = ()=>{ id = null; touchUI.x = touchUI.y = 0; knob.style.transform = ""; };
+  stick.addEventListener("pointerup", release);
+  stick.addEventListener("pointercancel", release);
+
+  const hold = (el, set)=>{
+    el.addEventListener("pointerdown", e=>{ set(true); initAudio(); e.preventDefault(); });
+    el.addEventListener("pointerup",   ()=> set(false));
+    el.addEventListener("pointerleave",()=> set(false));
+  };
+  hold(document.getElementById("tUp"),   v=> touchUI.up = v);
+  hold(document.getElementById("tDown"), v=> touchUI.down = v);
+  document.getElementById("tAct").addEventListener("pointerdown", e=>{
+    e.preventDefault(); initAudio();
+    if(state === S.FLY) jumpOut();
+    else if(state === S.FREEFALL) openCanopy();
+    else if(state === S.CANOPY) keys.Space = true;
+  });
+  document.getElementById("tAct").addEventListener("pointerup", ()=>{ keys.Space = false; });
+})();
+
+/* Reading the controls through one function means the touch stick and the
+   keyboard cannot drift apart. */
+function axis(){
+  return {
+    fwd:  (keys.KeyW||keys.ArrowUp   ?1:0) - (keys.KeyS||keys.ArrowDown ?1:0) - touchUI.y,
+    turn: (keys.KeyA||keys.ArrowLeft ?1:0) - (keys.KeyD||keys.ArrowRight?1:0) - touchUI.x,
+    up:   (keys.Space||touchUI.up ?1:0) - (keys.ShiftLeft||keys.ShiftRight||keys.ControlLeft||touchUI.down ?1:0),
+    brake: keys.Space || touchUI.up,
+  };
+}
+
+/* --- HUD --------------------------------------------------------------- */
+const el = id=> document.getElementById(id);
+const H = {
+  round:el("hRound"), score:el("hScore"), wind:el("hWind"),
+  alt:el("hAlt"), vs:el("hVs"), gs:el("hGs"), dist:el("hDist"),
+  banner:el("banner"), alarm:el("alarm"), hints:el("hints"),
+  arrow:el("bearArrow"), rings:el("ringRow"),
+};
+let bannerT = 0;
+function banner(text, secs){
+  H.banner.textContent = text;
+  H.banner.classList.add("on");
+  bannerT = secs || 3.2;
+}
+function hints(html){ H.hints.innerHTML = html; }
+
+const HINTS = {
+  [S.FLY]:     "<kbd>W</kbd><kbd>S</kbd> fly &nbsp; <kbd>A</kbd><kbd>D</kbd> turn &nbsp; <kbd>Space</kbd> up &nbsp; <kbd>Shift</kbd> down<br><kbd>F</kbd> <b>jump out</b> &nbsp;·&nbsp; drag to look around",
+  [S.FREEFALL]:"<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fly towards the rings<br><kbd>Space</kbd> <b>open the parachute</b>",
+  [S.CANOPY]:  "<kbd>A</kbd><kbd>D</kbd> steer &nbsp; <kbd>W</kbd> dive &nbsp; <kbd>S</kbd> brake<br><kbd>Space</kbd> <b>flare</b> just before you touch down",
+  [S.DOWN]:    "",
+};
+
+/* refreshing the DOM sixty times a second is wasted work; ten is plenty */
+let hudT = 0;
+function updateHUD(dt){
+  hudT -= dt;
+  if(hudT > 0) return;
+  hudT = 0.1;
+
+  const surf = surfaceAt(player.pos.x, player.pos.z);
+  const agl  = Math.max(0, player.pos.y - surf.y);
+  H.alt.textContent   = Math.round(state===S.FLY ? heli.g.position.y - surfaceAt(heli.g.position.x, heli.g.position.z).y : agl);
+  H.vs.textContent    = Math.round(Math.max(0, -(state===S.FLY ? heli.vel.y : player.vel.y)));
+  const v = state===S.FLY ? heli.vel : player.vel;
+  H.gs.textContent    = Math.round(Math.hypot(v.x, v.z) * 3.6);
+  H.score.textContent = run.score;
+  H.round.textContent = run.round + 1;
+
+  const dx = run.target.x - player.pos.x, dz = run.target.z - player.pos.z;
+  H.dist.textContent = Math.round(Math.hypot(dx, dz));
+
+  /* the chevron points at the zone in *camera* space, not world space */
+  const camA = Math.atan2(camera.position.x - cam.look.x, camera.position.z - cam.look.z);
+  const tgtA = Math.atan2(dx, dz);
+  H.arrow.setAttribute("transform", `rotate(${(tgtA - camA) * 180/Math.PI})`);
+}
+
+function buildRingDots(){
+  H.rings.innerHTML = RINGS.map(()=> '<div class="rdot"></div>').join("");
+}
+function markRing(i){
+  const d = H.rings.children[i];
+  if(d) d.classList.add("got");
+}
+
+/* --------------------------------------------------- round orchestration */
+
+/* Five rings hung down the sky on a helix.
+ *
+ * The column is re-laid at the moment you jump, and it runs from directly
+ * under the exit point to directly over the drop zone. That is the whole
+ * trick: chasing the rings is the same thing as flying yourself home, so a
+ * player who never works out what the compass chevron means still ends up
+ * over the bullseye. Centring the rings on the target instead — the obvious
+ * first attempt — put the top ring forty metres behind a jumper still
+ * carrying the helicopter's speed, and made the bonus quietly impossible.
+ *
+ * Re-laying it on exit also keeps it honest at any height: jump from four
+ * hundred metres and the helix stretches, jump from a hundred and fifty and
+ * it compresses to fit.
+ */
+function placeRings(top, bot, fromX, fromZ){
+  /* Cap how far the column may lean. Four gaps of about three quarters of a
+     second, at a tracking speed of 26 m/s and with a turn to make in between,
+     is roughly sixty metres of usable lead — past that the helix outruns the
+     jumper and the bonus stops being winnable. Exit a long way from the zone
+     and the rings simply point the way rather than reaching it. */
+  const LEAD = 60;
+  let tx = run.target.x, tz = run.target.z;
+  const dx = tx - fromX, dz = tz - fromZ, d = Math.hypot(dx, dz);
+  if(d > LEAD){ tx = fromX + dx/d*LEAD; tz = fromZ + dz/d*LEAD; }
+
+  for(let i=0;i<RINGS.length;i++){
+    const t = i/(RINGS.length-1);
+    const k = t*t*(3-2*t);                      // ease, so the path curves in
+    const cx = lerp(fromX, tx, k);
+    const cz = lerp(fromZ, tz, k);
+    const a  = t*3.0 + run.round*1.3;
+    const r  = 4 + t*8;                         // a gentle helix, not a slalom
+    const R  = RINGS[i];
+    R.x = cx + Math.cos(a)*r;
+    R.z = cz + Math.sin(a)*r;
+    R.y = run.target.y + lerp(top, bot, t);
+    R.got = false;
+    R.m.position.set(R.x, R.y, R.z);
+    R.m.material = ringMat;
+    R.m.visible = true;
+  }
+  buildRingDots();
+}
+
+function startRound(n){
+  run.round = n;
+  run.rings = 0;
+
+  const drop = DROPS[n % DROPS.length];
+  const p = drop.pick();
+  const surf = surfaceAt(p.x, p.z);
+  run.target.set(p.x, surf.y, p.z);
+  run.targetName = drop.name;
+
+  /* the wind is gentle and always shown, so a miss is never a mystery */
+  const wa = rnd()*Math.PI*2, ws = 1.4 + rnd()*3.4;
+  run.wind.set(Math.cos(wa)*ws, Math.sin(wa)*ws);
+  H.wind.textContent = ws.toFixed(1);
+
+  marker.g.position.copy(run.target);
+  marker.g.position.y += 0.14;
+  /* a provisional column straight over the zone, so it is visible from the
+     cabin while you pick your run-in; the real one is laid on exit */
+  placeRings(280, 140, run.target.x, run.target.z);
+
+  /* round 1 starts sitting on the pad; later rounds start already airborne,
+     because the fun bit is the jump and nobody wants four take-offs */
+  if(n === 0){
+    heli.g.position.set(HELIPAD.x, HELIPAD.y + 1.95, HELIPAD.z);
+    heli.yaw = Math.atan2(-OUT.x, -OUT.y);
+  } else {
+    const a = rnd()*Math.PI*2;
+    heli.g.position.set(run.target.x + Math.cos(a)*260, 290, run.target.z + Math.sin(a)*260);
+    heli.yaw = Math.atan2(run.target.x - heli.g.position.x, run.target.z - heli.g.position.z) + Math.PI;
+  }
+  heli.vel.set(0,0,0);
+  heli.g.rotation.set(0, heli.yaw, 0);
+  heli.g.visible = true;
+
+  jumper.visible = false;
+  canopy.visible = false;
+  player.chuteT = 0; player.flare = 0;
+  player.vel.set(0,0,0);
+  player.pos.copy(heli.g.position);
+
+  cam.wantDist = 22; cam.yaw = 0; cam.pitch = 0.22;
+
+  setState(S.FLY);
+  banner(n === 0 ? `DROP 1 — ${drop.name.toUpperCase()}`
+                 : `DROP ${n+1} — ${drop.name.toUpperCase()}`, 4);
+  el("result").classList.remove("on");
+}
+
+function setState(s){
+  state = s;
+  hints(HINTS[s] || "");
+}
+
+function jumpOut(){
+  const agl = heli.g.position.y - surfaceAt(heli.g.position.x, heli.g.position.z).y;
+  if(agl < 90){ banner("TOO LOW — CLIMB ABOVE 90 m FIRST", 2.4); beep(180,0.25,0.2,"square"); return; }
+
+  /* re-hang the ring column from the exit point down to the drop zone */
+  placeRings(Math.max(50, agl - 50), Math.max(26, agl*0.22),
+             heli.g.position.x, heli.g.position.z);
+
+  player.pos.copy(heli.g.position);
+  player.pos.y -= 2.4;
+  /* You take about half the aircraft's speed out of the door with you — enough
+     that a fast run-in still throws you forward, not so much that the first
+     ring sails past behind your shoulder. */
+  player.vel.copy(heli.vel).multiplyScalar(0.5);
+  player.vel.y = Math.min(0, heli.vel.y) - 1;
+  player.yaw = heli.yaw;
+  freeYaw    = heli.yaw;          // you leave the door looking where it looked
+  jumper.visible = true;
+  cam.wantDist = 13;
+  setState(S.FREEFALL);
+  banner("GERONIMO!  —  SPACE TO OPEN", 3);
+  beep(660, 0.2, 0.18, "triangle");
+}
+
+function openCanopy(){
+  if(state !== S.FREEFALL) return;
+  setState(S.CANOPY);
+  player.chuteT = 0.001;
+  canopy.visible = true;
+  canopy.scale.setScalar(0.15);
+  cam.wantDist = 26;
+  cam.shake = 0.55;
+  thud(0.45, 1400);
+  banner("CANOPY OPEN — STEER FOR THE BULLSEYE", 2.8);
+  H.alarm.style.opacity = 0;
+}
+
+/* ---- touchdown and scoring ------------------------------------------- */
+function land(surf){
+  setState(S.DOWN);
+  const vy   = -player.vel.y;
+  const dist = Math.hypot(player.pos.x - run.target.x, player.pos.z - run.target.z);
+  const wet  = surf.type === "water";
+
+  /* Points: mostly accuracy, with a real bonus for a gentle touchdown.
+     Accuracy runs out at fifty metres rather than at twenty — landing on the
+     right beach should still be worth something to a nine-year-old. */
+  const acc  = wet ? 0 : Math.round(1000 * Math.max(0, 1 - dist/50));
+  const soft = wet ? 0 : (vy < 2.5 ? 300 : vy < 4.5 ? 180 : vy < 7 ? 70 : 0);
+  const ring = run.rings * 120;
+  const total = acc + soft + ring;
+  run.score += total;
+
+  /* the landing itself */
+  if(wet){
+    burst(player.pos.clone().setY(0.4), 0xbfeaff, 26, 11, 1, 1.3);
+    thud(0.4, 700); beep(220, 0.4, 0.14, "sine");
+  } else {
+    burst(player.pos.clone().setY(surf.y + 0.3), surf.type==="deck" ? 0xd9b98a : 0xf0dda6,
+          16, 6, 0.7, 0.9);
+    thud(0.3, 500);
+  }
+  cam.shake = wet ? 0.5 : clamp(vy*0.08, 0.1, 0.7);
+
+  let verdict, sub, stars;
+  if(wet){                     verdict = "SPLASHDOWN!"; sub = "You landed in the water — the fish are fine."; stars = 0; }
+  else if(dist < 2.5){         verdict = "BULLSEYE!";   sub = `Dead centre on ${run.targetName}.`;            stars = 3; }
+  else if(dist < 7){           verdict = "GREAT DROP";  sub = `Inside the rings on ${run.targetName}.`;       stars = vy<4.5?3:2; }
+  else if(dist < 18){          verdict = "NICE LANDING";sub = `Close to ${run.targetName}.`;                  stars = 2; }
+  else if(dist < 45){          verdict = "SAFE LANDING";sub = `You came down on ${surf.name}.`;               stars = 1; }
+  else {                       verdict = "MILES OUT";   sub = `You came down on ${surf.name}.`;               stars = 0; }
+  if(!wet && vy > 8){ sub += " That was a heavy one, though."; stars = Math.max(0, stars-1); }
+
+  el("stars").textContent = "★★★☆☆☆".slice(3-stars, 6-stars);
+  el("verdict").textContent = verdict;
+  el("verdictSub").textContent = sub;
+  el("scoreRows").innerHTML = `
+    <div class="row"><span>Distance to bullseye</span><span class="v">${dist.toFixed(1)} m</span></div>
+    <div class="row"><span>Touchdown speed</span><span class="v">${vy.toFixed(1)} m/s</span></div>
+    <div class="row"><span>Accuracy</span><span class="v">+${acc}</span></div>
+    <div class="row"><span>Soft landing</span><span class="v">+${soft}</span></div>
+    <div class="row"><span>Rings (${run.rings}/5)</span><span class="v">+${ring}</span></div>
+    <div class="row total"><span>Drop total</span><span class="v">${total}</span></div>
+    <div class="row total"><span>Running score</span><span class="v">${run.score}</span></div>`;
+
+  el("nextBtn").textContent = (run.round + 1 >= DROPS.length) ? "FLY IT AGAIN" : "NEXT DROP";
+  if(stars >= 2) chime(523.25); else beep(330, 0.35, 0.14, "triangle");
+
+  setTimeout(()=> el("result").classList.add("on"), 1400);
+}
+
+/* --------------------------------------------------------- the physics */
+
+function flyHeli(dt){
+  const A = axis();
+  heli.yaw += A.turn * 1.25 * dt;
+
+  const fx = -Math.sin(heli.yaw), fz = -Math.cos(heli.yaw);
+  /* Brisk on purpose. The interesting part of a drop is the jump, and nobody
+     wants to spend half a minute in a climb to get to it. */
+  const CRUISE = 40, CLIMB = 24;
+  const want = new THREE.Vector3(fx*A.fwd*CRUISE, A.up*CLIMB, fz*A.fwd*CRUISE);
+  heli.vel.lerp(want, 1 - Math.exp(-1.9*dt));
+
+  heli.g.position.addScaledVector(heli.vel, dt);
+
+  /* stay over the map, and never sink through the deck */
+  const surf = surfaceAt(heli.g.position.x, heli.g.position.z);
+  const floor = surf.y + 1.95;
+  if(heli.g.position.y < floor){
+    heli.g.position.y = floor;
+    if(heli.vel.y < -6){ cam.shake = 0.4; thud(0.25, 400); }
+    heli.vel.y = Math.max(0, heli.vel.y);
+  }
+  heli.g.position.y = Math.min(heli.g.position.y, 520);
+  heli.g.position.x = clamp(heli.g.position.x, -1400, 1400);
+  heli.g.position.z = clamp(heli.g.position.z, -1400, 1400);
+
+  /* body attitude: nose down into the run, roll into the turn */
+  heli.g.rotation.order = "YXZ";
+  heli.g.rotation.y = heli.yaw;
+  const fspd = heli.vel.x*fx + heli.vel.z*fz;
+  heli.g.rotation.x = damp(heli.g.rotation.x,  (fspd/CRUISE)*0.24, 4, dt);
+  heli.g.rotation.z = damp(heli.g.rotation.z, -A.turn*0.20,        4, dt);
+
+  heli.rpm = damp(heli.rpm, 1, 2, dt);
+  player.pos.copy(heli.g.position);
+  player.vel.copy(heli.vel);
+}
+
+function freefall(dt){
+  const A = axis();
+  const G = 21;                    /* generous gravity: terminal in a couple of
+                                      seconds, which keeps the drop snappy */
+  const TERM = 55;
+
+  /* ---------------------------------------------------------------------
+     Free fall steers relative to the SCREEN, not to the body: W is away from
+     the camera, A and D slide left and right. Yaw-then-thrust — which is how
+     the canopy flies, and how this started out — is miserable here, because
+     a falling jumper has no visual reference for which way they are pointing
+     and every correction costs a two-second turn.
+
+     The camera azimuth used here is freeYaw, which the mouse moves and
+     nothing else. Feeding the body's own heading back in would make the
+     control frame rotate with the very input that is turning it. */
+  const cy = freeYaw + cam.yaw;
+  const fx = -Math.sin(cy), fz = -Math.cos(cy);   // away from the camera
+  const rx = -fz,           rz =  fx;             // screen right
+
+  let wx = fx*A.fwd - rx*A.turn;
+  let wz = fz*A.fwd - rz*A.turn;
+  const mag = Math.hypot(wx, wz);
+  if(mag > 1){ wx /= mag; wz /= mag; }            // no free speed on the diagonal
+
+  const track = 26;                // a flat track really does move you this fast
+  /* Rate 2.0 is drag at terminal velocity: it bleeds the speed you carried out
+     of the door in about a second and a half, and it makes the controls feel
+     like they answer rather than like they suggest. */
+  player.vel.x = damp(player.vel.x, wx*track + run.wind.x, 2.0, dt);
+  player.vel.z = damp(player.vel.z, wz*track + run.wind.y, 2.0, dt);
+
+  /* the body points where it is going — shortest way round, so it never
+     spins the long way to cross the -pi/+pi seam */
+  if(mag > 0.05){
+    const want = Math.atan2(-wx, -wz);
+    let e = ((want - player.yaw + Math.PI*3) % (Math.PI*2)) - Math.PI;
+    player.yaw += e * (1 - Math.exp(-5*dt));
+  }
+
+  player.vel.y -= G*dt;
+  if(player.vel.y < -TERM) player.vel.y = -TERM;
+
+  const prevY = player.pos.y;
+  player.pos.addScaledVector(player.vel, dt);
+
+  checkRings(prevY);
+
+  /* pose: arms and legs out in an arch, tilted into the direction of travel */
+  const L = JB.limbs;
+  L.armL.rotation.set(0.5, 0, -1.15); L.armR.rotation.set(0.5, 0, 1.15);
+  L.legL.rotation.set(0.3, 0, -0.32); L.legR.rotation.set(0.3, 0, 0.32);
+  jumper.rotation.order = "YXZ";
+  jumper.rotation.y = player.yaw;
+  /* the harder the track, the flatter and more head-down the body goes */
+  jumper.rotation.x = damp(jumper.rotation.x, -1.15 + mag*0.26, 5, dt);   // face-to-earth
+  jumper.rotation.z = damp(jumper.rotation.z, 0, 5, dt);
+  jumper.position.copy(player.pos);
+
+  const surf = surfaceAt(player.pos.x, player.pos.z);
+  const agl  = player.pos.y - surf.y;
+
+  /* the reserve: nobody gets to bounce */
+  if(agl < 120){
+    H.alarm.style.opacity = (Math.sin(now*14) > 0) ? 1 : 0.25;
+    if(agl < 105){ openCanopy(); banner("AUTO-OPEN — THAT WAS CLOSE!", 2.6); }
+  }
+}
+
+function canopyFlight(dt){
+  const A = axis();
+  player.chuteT = Math.min(1, player.chuteT + dt*1.9);
+
+  /* opening shock: the canopy snatches you upright over about half a second */
+  const infl = player.chuteT;
+  canopy.scale.setScalar(0.15 + 0.85*(1 - Math.pow(1-infl, 3)) * (1 + 0.12*Math.sin(infl*18)*(1-infl)));
+
+  const opening = infl < 1;
+  if(opening){
+    /* bleed off the free-fall speed hard while the cells fill */
+    player.vel.y = damp(player.vel.y, -5.5, 6, dt);
+    player.vel.x = damp(player.vel.x, 0, 4, dt);
+    player.vel.z = damp(player.vel.z, 0, 4, dt);
+  }
+
+  /* controls: A/D turn, W dive, S brake, Space flare */
+  player.yaw += A.turn * 1.35 * dt;
+  const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+
+  player.flare = damp(player.flare, A.brake ? 1 : 0, 6, dt);
+
+  /* forward speed and sink rate trade off, the way a real ram-air does:
+     brake hard and you slow down and float; dive and you go fast and drop */
+  const drive  = clamp(1 + A.fwd*0.55 - player.flare*1.15, 0.05, 1.6);
+  const fwdSpd = 13.5 * drive;
+  const sink   = 5.4 * (0.42 + drive*0.62) - player.flare*3.4;
+
+  player.vel.x = damp(player.vel.x, fx*fwdSpd + run.wind.x, 2.4, dt);
+  player.vel.z = damp(player.vel.z, fz*fwdSpd + run.wind.y, 2.4, dt);
+  player.vel.y = damp(player.vel.y, -Math.max(0.6, sink), opening ? 6 : 2.6, dt);
+
+  const prevY = player.pos.y;
+  player.pos.addScaledVector(player.vel, dt);
+  checkRings(prevY);
+
+  /* pose: hanging in the harness, hands on the toggles */
+  const L = JB.limbs;
+  L.armL.rotation.set(0, 0, -2.55 + player.flare*0.9);
+  L.armR.rotation.set(0, 0,  2.55 - player.flare*0.9);
+  L.legL.rotation.set(0.22, 0, -0.14); L.legR.rotation.set(0.22, 0, 0.14);
+  jumper.rotation.order = "YXZ";
+  jumper.rotation.y = player.yaw;
+  jumper.rotation.x = damp(jumper.rotation.x, 0.12, 5, dt);
+  jumper.rotation.z = damp(jumper.rotation.z, -A.turn*0.28, 4, dt);
+  jumper.position.copy(player.pos);
+
+  /* the canopy rides above and slightly behind, banked into the turn */
+  canopy.position.set(player.pos.x, player.pos.y + 6.6, player.pos.z);
+  canopy.rotation.order = "YXZ";
+  canopy.rotation.y = player.yaw;
+  canopy.rotation.z = damp(canopy.rotation.z, -A.turn*0.34, 3.5, dt);
+  canopy.rotation.x = damp(canopy.rotation.x, -0.10 + player.flare*0.22 - A.fwd*0.1, 3.5, dt);
+
+  /* touchdown */
+  const surf = surfaceAt(player.pos.x, player.pos.z);
+  if(player.pos.y <= surf.y + 1.05){
+    player.pos.y = surf.y + 1.05;
+    jumper.position.copy(player.pos);
+    land(surf);
+  }
+}
+
+function checkRings(prevY){
+  for(let i=0;i<RINGS.length;i++){
+    const R = RINGS[i];
+    if(R.got) continue;
+    /* you cross a ring when your path passes through its plane inside its hoop */
+    if(prevY > R.y && player.pos.y <= R.y){
+      const d = Math.hypot(player.pos.x - R.x, player.pos.z - R.z);
+      if(d < RING_R + 0.6){
+        R.got = true; run.rings++;
+        R.m.material = ringMatGot;
+        markRing(i);
+        burst(new THREE.Vector3(R.x, R.y, R.z), 0xffd36b, 14, 9, 0.4, 0.8);
+        beep(880 + run.rings*110, 0.18, 0.16, "triangle");
+      }
+    }
+  }
+}
+
+/* ------------------------------------------------------- ambient motion */
+
+let now = 0;
+function ambient(dt){
+  now += dt;
+
+  /* rotor: spins with rpm, and the blur disc fades in as it winds up */
+  heli.spin += dt * (6 + heli.rpm*46);
+  heli.rotor.rotation.y  = heli.spin;
+  heli.trotor.rotation.x = heli.spin*2.6;
+  const blink = (now % 1.1) < 0.12;
+  heli.lights[2].visible = blink;
+
+  /* the aircraft keeps flying itself once you have left it: it settles into a
+     lazy orbit rather than freezing in mid-air */
+  if(state === S.FREEFALL || state === S.CANOPY || state === S.DOWN){
+    heli.rpm = damp(heli.rpm, 0.75, 0.6, dt);
+    heli.yaw += 0.22*dt;
+    heli.g.rotation.y = heli.yaw;
+    heli.g.position.x += -Math.sin(heli.yaw)*14*dt;
+    heli.g.position.z += -Math.cos(heli.yaw)*14*dt;
+    heli.g.rotation.z = damp(heli.g.rotation.z, -0.12, 2, dt);
+  }
+
+  /* palms nod */
+  for(let i=0;i<palmWind.length;i++){
+    const p = palmWind[i];
+    p.m.rotation.z = Math.sin(now*1.3 + p.ph)*p.amp;
+    p.m.rotation.x = Math.cos(now*1.0 + p.ph*1.7)*p.amp*0.7;
+  }
+
+  /* boats rise and fall on the same waves the sea mesh is using */
+  for(const f of FLOATERS){
+    const p = f.g.position;
+    waveAt(p.x, p.z, now, _w);
+    p.y = _w.y - 0.2;
+    f.g.rotation.z = -_w.dx*8;
+    f.g.rotation.x =  _w.dz*8;
+  }
+  /* the raft is a drop zone, so its platform height has to track its bobbing */
+  const rp = RAFT.g.position;
+  waveAt(rp.x, rp.z, now, _w);
+  rp.y = _w.y*0.5;
+  RAFT.plat.y = rp.y + 0.25;
+  if(run.targetName === "Lagoon Raft") marker.g.position.y = rp.y + 0.4;
+
+  /* the runabout circles the island, nose into its own turn */
+  speedboat.a += dt*0.055;
+  const sb = speedboat.g;
+  sb.position.set(Math.cos(speedboat.a)*speedboat.r, 0, Math.sin(speedboat.a)*speedboat.r);
+  waveAt(sb.position.x, sb.position.z, now, _w);
+  sb.position.y = _w.y*0.6;
+  sb.rotation.y = -speedboat.a + Math.PI/2;
+  sb.rotation.z = 0.16;
+
+  /* gulls */
+  for(const b of BIRDS){
+    b.a += b.spd*dt;
+    const x = b.cx + Math.cos(b.a)*b.r, z = b.cz + Math.sin(b.a)*b.r;
+    b.m.position.set(x, b.y + Math.sin(now*0.7 + b.ph)*3.5, z);
+    b.m.rotation.y = -b.a + (b.spd>0 ? Math.PI/2 : -Math.PI/2);
+    b.m.rotation.z = Math.sin(now*5.5 + b.ph)*0.55;      // wingbeat
+  }
+
+  /* the drop-zone marker breathes so it catches the eye from altitude */
+  marker.halo.rotation.z += dt*0.5;
+  const pulse = 1 + Math.sin(now*2.2)*0.06;
+  marker.halo.scale.setScalar(pulse);
+  marker.beam.material.opacity = 0.14 + Math.sin(now*1.6)*0.05;
+  marker.disc.material.opacity = 0.75 + Math.sin(now*2.2)*0.15;
+
+  /* rings turn slowly and hover */
+  for(const R of RINGS){
+    if(!R.m.visible) continue;
+    R.m.rotation.z += dt*0.7;
+    R.m.position.y = R.y + Math.sin(now*1.4 + R.x)*0.5;
+  }
+}
+
+/* ------------------------------------------------------------- the loop */
+
+const clock = new THREE.Clock();
+let frame = 0;
+
+function tick(){
+  requestAnimationFrame(tick);
+  const dt = Math.min(0.05, clock.getDelta());
+  frame++;
+
+  ambient(dt);
+  updateSea(now, frame);
+
+  if(state === S.FLY)           flyHeli(dt);
+  else if(state === S.FREEFALL) freefall(dt);
+  else if(state === S.CANOPY)   canopyFlight(dt);
+  else if(state === S.DOWN){
+    /* let the canopy settle onto the ground behind the jumper */
+    canopy.position.lerp(new THREE.Vector3(player.pos.x, player.pos.y + 1.2, player.pos.z - 4), 1-Math.exp(-2*dt));
+    canopy.rotation.x = damp(canopy.rotation.x, -1.3, 2, dt);
+  } else if(state === S.MENU){
+    /* slow establishing orbit over the bay while the start card is up */
+    const a = now*0.06;
+    camera.position.set(Math.cos(a)*330, 150 + Math.sin(a*1.7)*30, Math.sin(a)*330);
+    camera.lookAt(0, 20, 0);
+  }
+
+  updateFX(dt);
+  audioTick(dt);
+
+  if(state !== S.MENU){
+    const look = (state === S.FLY) ? heli.g.position : player.pos;
+    /* free fall keeps its own camera heading, so the control frame the player
+       is steering in cannot rotate underneath them */
+    const yaw  = (state === S.FLY)      ? heli.yaw
+               : (state === S.FREEFALL) ? freeYaw
+               :                          player.yaw;
+    updateCamera(look, yaw, dt);
+    updateHUD(dt);
+
+    /* keep the shadow frustum on top of the action */
+    shadowFocus.lerp(look, 1-Math.exp(-3*dt));
+    sun.target.position.set(shadowFocus.x, Math.max(0, shadowFocus.y - 60), shadowFocus.z);
+    sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 420);
+    sun.target.updateMatrixWorld();
+  }
+
+  if(bannerT > 0){
+    bannerT -= dt;
+    if(bannerT <= 0) H.banner.classList.remove("on");
+  }
+  if(state !== S.FREEFALL) H.alarm.style.opacity = 0;
+
+  renderer.render(scene, camera);
+}
+
+/* ------------------------------------------------------------- wiring up */
+
+el("playBtn").addEventListener("click", ()=>{
+  initAudio();
+  el("start").classList.remove("on");
+  run.score = 0;
+  startRound(0);
+});
+el("nextBtn").addEventListener("click", ()=>{
+  el("result").classList.remove("on");
+  const next = run.round + 1;
+  if(next >= DROPS.length){ run.score = 0; startRound(0); }
+  else startRound(next);
+});
+el("againBtn").addEventListener("click", ()=>{
+  el("result").classList.remove("on");
+  startRound(run.round);
+});
+
+/* park the aircraft on the pad and point the marker somewhere sensible so the
+   menu orbit has something to look at */
+heli.g.position.set(HELIPAD.x, HELIPAD.y + 1.95, HELIPAD.z);
+heli.yaw = Math.atan2(-OUT.x, -OUT.y);
+heli.g.rotation.y = heli.yaw;
+heli.rpm = 0.35;
+(function primeMenu(){
+  const p = DROPS[0].pick();
+  const s = surfaceAt(p.x, p.z);
+  run.target.set(p.x, s.y, p.z);
+  marker.g.position.copy(run.target); marker.g.position.y += 0.14;
+  buildRingDots();
+})();
+
+/* one warm-up frame, then reveal — the first compile of every shader happens
+   here rather than as a stutter on the first second of play */
+updateSea(0, 0);
+renderer.render(scene, camera);
+document.getElementById("loading").remove();
+tick();
+</script>
+</body>
+</html>
