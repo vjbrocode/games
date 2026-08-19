@@ -79,7 +79,17 @@ const GAMES = [
     blurb: "Infiltrate Forward Operating Base Ravenscar at night. Blind six cameras " +
            "before the garrison calls the valley, hack the signals mainframe, then get out. " +
            "Ridges, treelines, a tank and a gunship are all yours to use.",
-    tags:  ["3D", "three.js", "Keyboard + mouse"]
+    tags:  ["3D", "three.js", "Keyboard + mouse"],
+    desktopOnly: true
+  },
+  {
+    path:  "island-skydive/",
+    title: "Island Skydive",
+    sub:   "Helicopter & parachute",
+    blurb: "Fly the tour helicopter out over Coral Bay, jump, swoop through five golden " +
+           "rings on the way down, then pop the canopy and steer for the bullseye. Four " +
+           "drop zones: the beach, the pier helipad, a raft in the lagoon and the hilltop.",
+    tags:  ["3D", "three.js", "Keyboard + mouse", "Touch"]
   }
 ];
 
@@ -89,7 +99,7 @@ document.getElementById("grid").innerHTML = GAMES.map(g => `
     <p class="sub">${g.sub}</p>
     <p>${g.blurb}</p>
     <div class="tags">${g.tags.map(t =>
-      `<span class="tag${/keyboard|mouse|desktop/i.test(t) ? " desktop" : ""}">${t}</span>`
+      `<span class="tag${g.desktopOnly && /keyboard|mouse/i.test(t) ? " desktop" : ""}">${t}</span>`
     ).join("")}</div>
     <span class="play">PLAY &rsaquo;</span>
   </a>

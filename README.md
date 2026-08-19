@@ -9,6 +9,7 @@ Browser games, each self-contained and playable from a URL. No install, no build
 | Game | Folder | Current | Notes |
 | --- | --- | --- | --- |
 | [Operation Nightfall](night-infiltration/) | `night-infiltration/` | v2 | 3D stealth FPS (three.js). Needs a keyboard and mouse — desktop only. |
+| [Island Skydive](island-skydive/) | `island-skydive/` | v1 | Helicopter and parachute over a tropical island (three.js). Keyboard and mouse, with on-screen controls on touch devices. |
 
 ### Operation Nightfall changelog
 
@@ -17,6 +18,10 @@ Browser games, each self-contained and playable from a URL. No install, no build
   the first page. Trimmed the wall of text to a short hook plus the eight keys you need,
   moved the full reference behind a collapsible panel, added the missing mobile viewport
   tag, and made the briefing screen fit short viewports too.
+- **v1** — first public release.
+
+### Island Skydive changelog
+
 - **v1** — first public release.
 
 ## Repo layout
@@ -28,6 +33,9 @@ Browser games, each self-contained and playable from a URL. No install, no build
 │   ├── index.html              stable entry point → forwards to current version
 │   ├── v1.html                 the game, version 1
 │   └── v2.html                 the game, version 2  ← current
+├── island-skydive/
+│   ├── index.html              stable entry point → forwards to current version
+│   └── v1.html                 the game, version 1  ← current
 └── .github/workflows/
     └── deploy-pages.yml        publishes the repo root to GitHub Pages
 ```
@@ -43,6 +51,8 @@ overwritten** — every one stays playable at its own permanent URL:
 - `night-infiltration/` → always the current release (share this one)
 - `night-infiltration/v2.html` → v2, forever
 - `night-infiltration/v1.html` → v1, forever
+- `island-skydive/` → always the current release
+- `island-skydive/v1.html` → v1, forever
 
 The folder's `index.html` is a small forwarder, not a copy of the game, so keeping old
 versions around costs one file per release and nothing else.
