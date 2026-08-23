@@ -11,3 +11,6 @@
 
 # Logs
 *.log
+
+# Test-suite dependencies (the games themselves have none)
+node_modules/
