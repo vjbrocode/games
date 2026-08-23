@@ -1,0 +1,12 @@
+{
+  "name": "nightfall-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Automated tests for Operation Nightfall. Not part of the game — the game itself has no build step and no dependencies.",
+  "scripts": {
+    "test": "node nightfall.test.js"
+  },
+  "dependencies": {
+    "puppeteer-core": "^23.0.0"
+  }
+}
