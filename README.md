@@ -8,10 +8,30 @@ Browser games, each self-contained and playable from a URL. No install, no build
 
 | Game | Folder | Current | Notes |
 | --- | --- | --- | --- |
-| [Operation Nightfall](night-infiltration/) | `night-infiltration/` | v5 | 3D stealth FPS (three.js). Needs a keyboard and mouse — desktop only. |
+| [Operation Nightfall](night-infiltration/) | `night-infiltration/` | v7 | 3D stealth FPS (three.js), now in two missions — Nightfall, then Sablewind. Needs a keyboard and mouse — desktop only. |
 | [Island Skydive](island-skydive/) | `island-skydive/` | v1 | Helicopter and parachute over a tropical island (three.js). Keyboard and mouse, with on-screen controls on touch devices. |
 
 ### Operation Nightfall changelog
+
+- **v7** — Mission 1, refreshed. A gradient sky dome and a moon instead of flat fog;
+  PCFSoft shadow filtering on ULTRA with a normal bias against shadow acne; **dynamic
+  resolution scaling** in the frame-rate governor, which trims pixel ratio before it
+  drops a quality tier and restores it once frame time recovers; a **hit-direction
+  indicator** and red vignette in place of the old body flash; slow field recovery back
+  up to 50% health after six seconds without damage; a compass strip and an audible hit
+  tick. Passes the full suite, 152/152. **This is the current Mission 1** —
+  `night-infiltration/` forwards here, and its debrief opens Mission 2.
+- **v6** — v5 plus the **CONTINUE — MISSION 2** link on the debrief screen. Nothing else
+  changed; kept as its own file so v5 stays exactly as it shipped.
+- **Mission 2 — `stage2.html` (Operation Sablewind)** — a second, standalone game file
+  and the payoff to Raines' closing brief in v5: the coastal site he warned about.
+  **Kestrel Point**, a hardened launcher site dug into a cliff, with a new armoury, a
+  new mission and a garrison of around forty-six. Same engine philosophy and the same
+  controls, but its actors are a proper object model (`Vehicle` → `Truck`, `Launcher`;
+  `Charge`; `SentryTurret`; `PatrolBoat`; `Guard`), guards turn at a human rate and walk
+  by distance covered rather than sliding, and the quality governor scales resolution
+  before dropping a tier. It runs standalone — bookmark `stage2.html` to jump straight
+  in — and links back to Mission 1.
 
 - **v5** — the mission is the intelligence, and the ending is a scene.
   - **Hacking the mainframe is the mission.** v4 would not let you leave until all
@@ -160,7 +180,10 @@ Browser games, each self-contained and playable from a URL. No install, no build
 │   ├── v2.html                 the game, version 2
 │   ├── v3.html                 the game, version 3
 │   ├── v4.html                 the game, version 4
-│   ├── v5.html                 the game, version 5  ← current
+│   ├── v5.html                 the game, version 5
+│   ├── v6.html                 the game, version 6 (v5 + the Mission 2 link)
+│   ├── v7.html                 the game, version 7  ← current Mission 1
+│   ├── stage2.html             Mission 2 — Operation Sablewind (standalone)
 │   └── tests/                  automated tests (Node + Chrome; not served to players)
 ├── island-skydive/
 │   ├── index.html              stable entry point → forwards to current version
@@ -178,6 +201,9 @@ Each release is its own file, `vN.html`, and **older versions are never deleted 
 overwritten** — every one stays playable at its own permanent URL:
 
 - `night-infiltration/` → always the current release (share this one)
+- `night-infiltration/stage2.html` → Mission 2, Operation Sablewind
+- `night-infiltration/v7.html` → v7, forever
+- `night-infiltration/v6.html` → v6, forever
 - `night-infiltration/v5.html` → v5, forever
 - `night-infiltration/v4.html` → v4, forever
 - `night-infiltration/v3.html` → v3, forever
@@ -191,16 +217,18 @@ versions around costs one file per release and nothing else.
 
 ### Releasing a new version
 
-1. Add the new file alongside the old one, e.g. `night-infiltration/v6.html`.
+1. Add the new file alongside the old one, e.g. `night-infiltration/v8.html`.
 2. Bump the version string inside it — it appears in three places: the `<title>`, the
    `<h1>` on the start screen, and `version:` in the `Game` object.
-3. In `night-infiltration/index.html`, change the three `v5.html` references to `v6.html`
+3. In `night-infiltration/index.html`, change the three `v7.html` references to `v8.html`
    (canonical link, meta refresh, and the no-JS fallback link).
 4. Update the **Current** column and the changelog above.
 5. Run the tests against the new file before you publish it:
-   `cd night-infiltration/tests && node nightfall.test.js http://localhost:8899/v6.html`
+   `cd night-infiltration/tests && node nightfall.test.js http://localhost:8899/v8.html`
    (see `night-infiltration/tests/README.md`).
-5. Push to `main`.
+6. If the release changes where the story goes next, update the forward link on the
+   debrief screen (`v7.html` points at `stage2.html`) and the back link in `stage2.html`.
+7. Push to `main`.
 
 ## Adding a game
 

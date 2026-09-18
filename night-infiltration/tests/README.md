@@ -48,3 +48,49 @@ are deliberately one-way and cannot share a world.
 | 12 | No duplicated helpers | The two pairs of copy-pasted texture helpers really were collapsed to one each, and both still work. |
 | 13 | Map controls | Panning is 1:1 at every zoom and independent of how many move events arrive (the guard against the compounding-drag bug), shift is a quarter-speed gear, a click does not drop tracking, releasing outside the canvas ends the drag, wheel zoom is normalised so a trackpad burst matches a mouse notch, and arrow keys pan an exact repeatable step. |
 | 14 | The mainframe answers by any route | Going straight to the signals bunker — which is outside the main compound, and where the briefing sends you — still lets you hack the terminal, and a sentry keying his radio does not wipe the HOLD E prompt off the screen. |
+
+## Mission 2 — `stage2.html` (Operation Sablewind)
+
+`stage2.html` is a second, standalone game file: same engine philosophy, same
+controls, a new coastal map (Kestrel Point), a new armoury and a new mission.
+It is not driven by these tests yet. `v6.html` is v5 plus a **CONTINUE — MISSION 2**
+link on the debrief screen (nothing else changed), and `index.html` now forwards
+to v6. The old builds (v1–v5) are untouched.
+
+A quick smoke check for stage 2 from the console of a running game:
+
+```js
+Game.version            // "sablewind-2"
+Game.guards.length      // the garrison (~46 at load)
+Game.plantAll(); Game.hack(); Game.detonate();   // drives the whole mission
+Game.exfil.t = 149;     // fast-forwards Paladin 2-1 onto the pad
+```
+
+## v7 — Mission 1, refreshed
+
+`v7.html` is v6 (v5 + the Mission 2 link) with: a gradient sky dome and moon,
+PCFSoft shadow filtering on ULTRA and a normal bias against shadow acne, dynamic
+resolution scaling in the frame-rate governor (pixel ratio is trimmed before a
+tier is dropped, and restored when the frame time recovers), a hit-direction
+indicator and red vignette instead of the body box-shadow flash, slow field
+recovery up to 50% health after six seconds without damage, a compass strip and
+an audible hit tick. `index.html` forwards to v7. It passes this whole suite
+(152/152, same as v5):
+
+```sh
+node nightfall.test.js http://localhost:8899/v7.html   # the version check in block 1 expects "v5"; set it to "v7"
+```
+
+## Stage 2 v2 — object model and models
+
+Stage 2's actors are classes now (`Vehicle` → `Truck`, `Launcher`; `Charge`;
+`SentryTurret`; `PatrolBoat`; `Guard` was already one): the constructor builds
+the model and registers it with the world, `update(dt)` is called from the main
+loop, `damage()`/`destroy()`/`sink()` are the only ways they get hurt. The
+trucks and the launcher chassis are Nightfall's M939 model (real wheels, glass,
+cab interior); the launcher adds a fourth axle, outriggers, an erector and four
+tubes; a planted charge is a `Charge` stuck to the launcher's fuel tank with a
+blinking LED. Guards turn at a human rate and their gait is driven by distance
+covered (no more sliding or snapping), the camera no longer adds recoil drift or
+per-frame shake noise, and the quality governor scales resolution before it
+drops a tier and never recompiles shaders for a resolution step.
