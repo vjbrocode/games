@@ -156,7 +156,7 @@
     <div><kbd>MOUSE</kbd> look</div>
     <div><kbd>X</kbd> / <kbd>LMB</kbd> fire</div>
     <div><kbd>Z</kbd> / <kbd>RMB</kbd> aim</div>
-    <div><kbd>E</kbd> interact</div>
+    <div><kbd>E</kbd> interact / ladders</div>
     <div><kbd>SHIFT</kbd> sprint</div>
     <div><kbd>C</kbd> crouch</div>
     <div><kbd>M</kbd> map</div>
@@ -2457,17 +2457,29 @@ class PatrolBoat extends Entity {
     hull.userData.boat=this; house.userData.boat=this;
     this.target=registerTarget("PATROL BOAT",x,WATER_Y,z,6,260,[hull,house],()=>this.sink());
     boats.push(this);
+    // the crew: a gunner on the pintle and a lookout by the wheelhouse. They
+    // are ordinary guards whose feet are on the deck — the boat carries them
+    // each frame — and without them the boat is just a hull.
+    this.crew=[];
+    this.crewSeats=[[0,1.1,-3.9,0],[1.0,1.1,2.6,Math.PI]];
   }
+  // called once the soldier builder exists (the level is built before the garrison)
+  embarkCrew(){ const x=this.mesh.position.x, z=this.mesh.position.z; this.crewSeats.forEach(([sx,sy,sz,ry])=>{ const gd=makeGuard([[x,z]],{y:1}); gd.crew=this; gd.seat=new THREE.Vector3(sx,sy,sz); gd.seatYaw=ry; gd.name="BOAT CREW"; this.crew.push(gd); }); this.carryCrew(); }
+  get manned(){ return this.crew.some(c=>!c.dead); }
+  carryCrew(){ for(const c of this.crew){ const wp=c.seat.clone(); this.mesh.localToWorld(wp); if(c.dead){ if(!c.dropped){ c.dropped=true; c.mesh.position.copy(wp); c.fallY0=wp.y; } c.mesh.position.copy(wp); c.fallY0=wp.y; continue; } c.mesh.position.copy(wp); c.baseY=wp.y; c.elevated=wp.y; if(c.state!=="combat") c.mesh.rotation.y=this.mesh.rotation.y+c.seatYaw; } }
   update(dt,t){
     const g=this.mesh;
-    if(this.dead){ g.position.y-=dt*0.6; g.rotation.z+=dt*0.12; g.rotation.x-=dt*0.05; if(g.position.y<WATER_Y-9) g.visible=false; return; }
+    if(this.dead){ g.position.y-=dt*0.6; g.rotation.z+=dt*0.12; g.rotation.x-=dt*0.05; if(g.position.y<WATER_Y-9) g.visible=false; this.carryCrew(); return; }
     g.position.y=WATER_Y+Math.sin(t*1.1+this.searchPhase)*0.18; g.rotation.x=Math.sin(t*0.9+this.searchPhase)*0.03; g.rotation.z=Math.sin(t*0.7)*0.03;
     this.radar.rotation.y+=dt*2.5;
+    // nobody left aboard: she drifts where she is, light off, gun silent
+    if(!this.manned){ this.carryCrew(); this.speed=lerp(this.speed,0,Math.min(1,dt*0.5)); if(this.speed>0.2){ g.position.x-=Math.sin(g.rotation.y)*this.speed*dt; g.position.z-=Math.cos(g.rotation.y)*this.speed*dt; } if(!this.derelict){ this.derelict=true; this.sl.children[0].material=new THREE.MeshBasicMaterial({color:0x333333}); showMsg("PATROL BOAT — CREW DOWN, SHE'S DEAD IN THE WATER"); } return; }
     if(this.route){ const tgt=this.route[this.ri]; const dx=tgt[0]-g.position.x, dz=tgt[1]-g.position.z, d=Math.hypot(dx,dz);
       if(d<8) this.ri=(this.ri+1)%this.route.length;
       else { const want=Math.atan2(-dx,-dz); let da=want-g.rotation.y; while(da>Math.PI)da-=6.283; while(da<-Math.PI)da+=6.283; g.rotation.y+=clamp(da,-0.5*dt,0.5*dt);
         const target=this.alert?11:6; this.speed=lerp(this.speed,target,Math.min(1,dt*0.5)); g.position.x-=Math.sin(g.rotation.y)*this.speed*dt; g.position.z-=Math.cos(g.rotation.y)*this.speed*dt;
         if(this.speed>2 && Math.random()<dt*6){ const bp=new THREE.Vector3(0,0.2,6.5); g.localToWorld(bp); spawnSprite(bp.x,WATER_Y+0.2,bp.z,false,rnd(2,3.5),1.2,0.3); } } }
+    this.carryCrew();
     const dist=g.position.distanceTo(player.pos);
     this.sl.rotation.y=Math.sin(t*0.5+this.searchPhase)*0.9;
     if(dist<90){ const pp=_tv2.set(player.pos.x,player.pos.y+1.2,player.pos.z); const bp=this.sl.getWorldPosition(_tv1);
@@ -2475,7 +2487,7 @@ class PatrolBoat extends Entity {
       const inBeam=fwd.dot(toP)>0.93; this.losT-=dt; if(this.losT<=0){ this.losT=0.3; this.blocked=losBlocked(bp,pp); }
       if(!this.blocked && !inSmoke() && (inBeam||this.alert||ALARM.level>0)){ this.see+=dt*(inBeam?1.5:0.6); if(this.see>1.2){ if(!this.alert){ this.alert=true; callout("Patrol boat: contact on the shore, engaging!"); } if(ALARM.level===0) ALARM.raise(null,"patrol boat"); if(inBeam) player.inLight=true; } }
       else this.see=Math.max(0,this.see-dt);
-      if(this.alert && !this.blocked && dist<80){ const want=Math.atan2(player.pos.x-g.position.x,player.pos.z-g.position.z)-g.rotation.y+Math.PI; this.gunM.rotation.y=want;
+      if(this.alert && !this.blocked && dist<80 && !this.crew[0].dead){ const want=Math.atan2(player.pos.x-g.position.x,player.pos.z-g.position.z)-g.rotation.y+Math.PI; this.gunM.rotation.y=want;
         this.shootT-=dt; if(this.shootT<=0){ this.shootT=this.burst>0?0.1:1.6; this.burst=this.burst>0?this.burst-1:6; sfxEnemyShot(dist); const muz=this.gunM.getWorldPosition(new THREE.Vector3()); muz.y+=1.0;
           const aim=new THREE.Vector3(player.pos.x+(Math.random()-0.5)*2.5,player.pos.y+1,player.pos.z+(Math.random()-0.5)*2.5); addTracer(muz,aim,0xff9060,0.045); muzzleFlashAt(muz); if(Math.random()<0.22) damagePlayer(8+Math.random()*5,muz); else if(Math.random()<0.4) sfxWhizz(); } }
     }
@@ -2579,6 +2591,7 @@ const COM=commsStation(COMMS.x,COMMS.z);
 function shoreZ(x){ let z=coastZ(x); for(let i=0;i<300;i++){ if(terrainH(x,z)>WATER_Y+0.5) return z; z-=1; } return z; }
 const SHORE_Z=shoreZ(COVE.x);
 const RHIB=rhib(COVE.x,SHORE_Z+3,0.15);
+platforms.push({x1:COVE.x-1.2,z1:SHORE_Z+0.2,x2:COVE.x+1.2,z2:SHORE_Z+5.8,h:groundAt(COVE.x,SHORE_Z+3)+0.65});
 rocks([[COVE.x-40,COVE.z-10,3],[COVE.x+42,COVE.z-6,2.6],[COVE.x-30,COVE.z+10,1.8],[COVE.x+30,COVE.z+14,1.6],[COVE.x-50,COVE.z-30,2.2],[COVE.x+55,COVE.z-40,3.2]]);
 // the overlook: a rock shelf with sandbags, looking down onto the battery from the west
 rocks([[OVERLOOK.x-8,OVERLOOK.z-8,3.4],[OVERLOOK.x+9,OVERLOOK.z-6,2.8],[OVERLOOK.x,OVERLOOK.z-12,2.4],[OVERLOOK.x-14,OVERLOOK.z+4,2.0]]);
@@ -3146,6 +3159,8 @@ function makeGuard(waypoints, opts){
   scene.add(g); GUARDS.add(guard); solids.push(torso);
   return guard;
 }
+// the boats' crews, now that men can be built
+for(const B of boats) B.embarkCrew();
 // ---- the garrison of Kestrel Point ----
 // battery: patrols along the spine and the walls, a sentry at each gate, men on the towers
 makeGuard([[-10,98],[10,98]]); makeGuard([[0,90],[0,-70]]); makeGuard([[-40,50],[40,50]]);
@@ -3171,7 +3186,7 @@ makeGuard([[80,-215],[160,-262]]);
 makeGuard([[COVE.x-40,COVE.z-70],[COVE.x+50,COVE.z-70]]); makeGuard([[OVERLOOK.x+12,OVERLOOK.z+2]]);
 makeGuard([[-200,180],[-120,200]]); makeGuard([[-60,200],[60,200]]);
 // ---- Jones, for the third-person and cinematic shots ----
-const playerBody=(function(){
+function buildOperator(){
   const p=new THREE.Group(); const suit=camoMat("#22281d",["#1a1f16","#2c3324","#141813"],3.2,0.92,0.05,70); const rig=pbr({color:0x191c17,roughness:0.85,metalness:0.1});
   const legs=[]; [-1,1].forEach(s=>{ const hip=new THREE.Group(); hip.position.set(0.115*s,0.92,0); p.add(hip); legs.push(hip); pc(GEO.thigh,suit,0,-0.25,0,hip); pc(GEO.shin,suit,0,-0.72,0.005,hip); pc(GEO.boot,bootMat,0,-0.955,0.045,hip); pc(GEO.knee,darkMat,0,-0.50,0.05,hip).scale.set(1.05,0.7,0.75); });
   pc(GEO.hips,suit,0,0.99,0,p); const torso=pc(GEO.chest,suit,0,1.32,0,p); torso.scale.set(1,1,0.72); pc(GEO.abdo,suit,0,1.06,0,p).scale.set(1,1,0.74); pc(GEO.plate,rig,0,1.30,0.01,p); pc(GEO.cummer,rig,0,1.06,0.005,p);
@@ -3179,8 +3194,12 @@ const playerBody=(function(){
   const hood=pc(GEO.helmet,rig,0,1.715,-0.004,p); hood.scale.set(1.04,1.0,1.08); const nvg=pc(GEO.nvg,darkMat,0,1.80,0.14,p); nvg.scale.set(1.6,1.2,1.4);
   [-1,1].forEach(s=>{ const sh=new THREE.Group(); sh.position.set(0.235*s,1.46,0); pc(GEO.shoulder,suit,0,0,0,sh); pc(GEO.upperArm,suit,0,-0.17,0,sh); pc(GEO.foreArm,suit,0,-0.47,0,sh); pc(GEO.glove,gloveMat,0,-0.64,0.01,sh); sh.rotation.x=s>0?-1.15:-1.35; sh.rotation.z=s>0?-0.25:0.35; p.add(sh); });
   const wep=new THREE.Group(); wep.position.set(0.13,1.30,0.20); p.add(wep); pc(GEO.rifleRx,darkMat,0,0,0.04,wep); pc(GEO.rifleBl,darkMat,0,0.012,0.44,wep).rotation.x=Math.PI/2; pc(GEO.rifleSt,darkMat,0,-0.01,-0.28,wep);
-  p.traverse(o=>{ if(o.isMesh) o.castShadow=true; }); p.visible=false; scene.add(p); p.userData.legs=legs; p.userData.phase=0; return p;
-})();
+  p.traverse(o=>{ if(o.isMesh) o.castShadow=true; }); p.userData.legs=legs; p.userData.phase=0; return p;
+}
+const playerBody=buildOperator(); playerBody.visible=false; scene.add(playerBody);
+// the coxswain: seated at the RHIB's console, one hand on the tiller
+const COX=buildOperator(); COX.scale.setScalar(0.98); RHIB.add(COX); COX.position.set(0.1,0.25,1.2); COX.rotation.y=Math.PI;
+COX.userData.legs.forEach(h=>{ h.rotation.x=-1.4; }); COX.children.filter(c=>c.children.length&&c.position.y>1.4).forEach(sh=>{ sh.rotation.x=-0.6; });
 
 // ================= SIGHT LINES =================
 const ray=new THREE.Raycaster();
@@ -3293,6 +3312,7 @@ function guardAI(g,dt){
   const dist=gp.distanceTo(player.pos);
   if(dist>320){ g.mesh.visible=false; } else if(!g.mesh.visible) g.mesh.visible=true;
   if(g.baseY===undefined) g.baseY=gp.y;
+  if(g.crew){ g.flee=null; if(g.state==="search") g.state="patrol"; }
   if(g.flee){ g.flee.t-=dt; if(g.flee.t<=0) g.flee=null; else { let ax=gp.x-g.flee.x, az=gp.z-g.flee.z; const al=Math.hypot(ax,az)||1; moveGuard(g,(ax/al)*6.4*dt,(az/al)*6.4*dt); faceToward(g,gp.x+ax,gp.z+az,dt,8); walkAnim(g,dt,true); return; } }
   const eye=_gEye.set(gp.x,gp.y+1.7,gp.z);
   const ppos=_gPP.set(player.pos.x,player.pos.y+(player.crouch?EYE_CROUCH:EYE)-0.2,player.pos.z);
@@ -3329,7 +3349,7 @@ function guardAI(g,dt){
     if(!advance && g.elevated===0 && dist<24){ g.strafeT=(g.strafeT||0)-dt; if(g.strafeT<=0){ g.strafeT=1.2+Math.random()*1.5; g.strafeDir=Math.random()<0.5?1:-1; }
       const fx=g.lastSeen.x-gp.x, fz=g.lastSeen.z-gp.z, fl=Math.hypot(fx,fz)||1; moveGuard(g,-fz/fl*g.strafeDir*1.6*dt,fx/fl*g.strafeDir*1.6*dt); }
     // lost him: go looking after a while
-    if(!sees){ g.lostT=(g.lostT||0)+dt; if(g.lostT>9){ g.state="search"; g.waitT=6; g.lostT=0; g.detect=0.5; return; } } else g.lostT=0;
+    if(!sees){ g.lostT=(g.lostT||0)+dt; if(g.lostT>9){ g.state=g.crew?"patrol":"search"; g.waitT=6; g.lostT=0; g.detect=0.5; return; } } else g.lostT=0;
     g.shootT-=dt;
     if(g.reactT<=0 && g.shootT<=0 && sees && dist<(g.heavy?70:55)){
       g.shootT = g.burst>0 ? (g.heavy?0.09:0.14) : (g.heavy?1.4:1.1)+Math.random()*0.5;
@@ -3347,6 +3367,7 @@ function guardAI(g,dt){
     return;
   }
   // ---- patrol ----
+  if(g.crew){ walkAnim(g,dt,false); g.mesh.position.y=g.baseY; g.mesh.rotation.x=0; g.mesh.rotation.z=0; return; }
   if(g.wp.length<=1){ g.idleT=(g.idleT||0)+dt; g.mesh.rotation.y=g.baseYaw===undefined?(g.baseYaw=g.mesh.rotation.y):g.baseYaw+Math.sin(g.idleT*0.4)*0.6; g.mesh.position.y=g.baseY; g.mesh.rotation.x=0; g.mesh.rotation.z=0; return; }
   const t=g.wp[g.wpi]; const dx=t[0]-gp.x, dz=t[1]-gp.z, d=Math.hypot(dx,dz);
   if(d<1.2 || g.stuck>12){ g.wpi=(g.wpi+1)%g.wp.length; g.pauseT=1+Math.random()*2.5; g.stuck=0; }
@@ -3654,7 +3675,7 @@ const OBJ=[
   {id:4,text:"Optional: silence the comms station on the north hill",done:()=>COM.dead,opt:true}
 ];
 function objectiveText(){
-  if(stage===0) return "OBJECTIVE: Get up off the beach — the cliff path is north of the cove";
+  if(stage===0) return player.inBoat?"OBJECTIVE: Step off the boat onto the sand":"OBJECTIVE: Get up off the beach — the cliff path is north of the cove";
   if(!launchers.every(l=>l.planted||l.destroyed) && !hacked) return "OBJECTIVE: Reach the battery — plant the launchers, hack fire-control";
   if(!launchers.every(l=>l.planted||l.destroyed)) return "OBJECTIVE: Plant charges on the remaining launchers ("+launchers.filter(l=>l.planted||l.destroyed).length+"/3)";
   if(!hacked) return "OBJECTIVE: Hack fire-control — the bunker north of the radar mast";
@@ -3682,6 +3703,8 @@ let calloutT=0; function callout(t,o){ el("callout").textContent=t; el("callout"
 let interactT=0, holdingE=false;
 function interactTarget(){
   const p=player.pos;
+  if(climbing) return {kind:"letgo",label:"W / S — CLIMB  ·  E — LET GO"};
+  const L=findLadder(); if(L && !climbing){ const y1=L.y1!==undefined?L.y1:8.4; return {kind:"ladder",L,label:Math.abs(p.y-y1)<0.8?"E — CLIMB DOWN":"E — CLIMB LADDER"}; }
   // doors
   for(const d of doors){ if(d.smashed) continue; if(d.center.distanceTo(p)<2.4) return {kind:"door",d,label:d.open?"E — CLOSE DOOR":"E — OPEN DOOR"}; }
   for(const L of launchers){ if(!L.planted&&!L.destroyed && Math.hypot(L.x-p.x,L.z-p.z)<5.5 && Math.abs(L.y-p.y)<3){ return player.c4>0?{kind:"plant",L,label:"HOLD E — PLANT C4 ON "+L.name}:{kind:"none",label:"NO C4 LEFT — the harbour demolition store has more"}; } }
@@ -3699,6 +3722,8 @@ function interactTick(dt){
 }
 function interactPress(){
   const t=interactTarget(); if(!t) return;
+  if(t.kind==="ladder"){ climbing=true; curLadder=t.L; player.vy=0; const y1=t.L.y1!==undefined?t.L.y1:8.4; if(Math.abs(player.pos.y-y1)<0.8) player.pos.y=y1-0.3; sfxMech("seat"); return; }
+  if(t.kind==="letgo"){ climbing=false; return; }
   if(t.kind==="door"){ t.d.open=!t.d.open; sfxMech(t.d.open?"release":"seat"); noiseAt(t.d.center,8); }
   else if(t.kind==="board"){ exfil.board(); }
 }
@@ -3799,25 +3824,32 @@ function heliAudioUpdate(farK){ if(heliGain) heliGain.gain.value=0.35*(1-farK)*(
 // ================= CINEMATICS =================
 let cine=null;
 function startInsertion(){
-  cine={t:0,kind:"insert",titled:false}; running=false;
-  el("cine").style.display="block"; el("lbTop").style.height="11vh"; el("lbBot").style.height="11vh"; el("cineTitle").style.opacity=0; el("cineSub").style.opacity=0; el("cineSkip").textContent="SPACE — SKIP";
-  el("hud").style.display="none"; curW().model.visible=false; playerBody.visible=true; playerBody.position.set(COVE.x,groundAt(COVE.x,SHORE_Z-2),SHORE_Z-2); playerBody.rotation.y=Math.PI;
+  cine={t:0,kind:"insert",titled:false,titled2:false,grounded:false}; running=false;
+  el("cine").style.display="block"; el("lbTop").style.height="11vh"; el("lbBot").style.height="11vh"; el("cineTitle").style.opacity=0; el("cineSub").style.opacity=0; el("cineSkip").textContent="SPACE — SKIP TO THE BEACH";
+  el("hud").style.display="none"; curW().model.visible=false; playerBody.visible=false;
+  player.yaw=Math.PI; player.pitch=0.05;
+  renderer.domElement.requestPointerLock();
 }
+// the seat you ride in on: port side, behind the coxswain, facing the bow
+const RHIB_SEAT=new THREE.Vector3(-0.55,0.35,-0.4);
 function cineTick(dt){
   cine.t+=dt; const t=cine.t;
   if(cine.kind==="insert"){
-    const LEN=16; const u=Math.min(1,t/LEN);
-    // the RHIB runs in from the sea; the camera rides alongside, then climbs to show the point
+    const LEN=15; const u=Math.min(1,t/LEN);
     const sx=COVE.x+120, sz=COVE.z+260;
-    if(u<0.55){ const k=u/0.55; const e=k*k*(3-2*k); RHIB.position.set(lerp(sx,COVE.x,e),WATER_Y+0.35+Math.sin(t*2)*0.15,lerp(sz,SHORE_Z+3,e)); RHIB.rotation.y=Math.atan2(sx-COVE.x,sz-SHORE_Z-3)+Math.PI; RHIB.rotation.x=Math.sin(t*2.3)*0.04;
-      camera.position.set(RHIB.position.x+12,WATER_Y+4+k*2,RHIB.position.z+14); camera.lookAt(RHIB.position.x,RHIB.position.y+1,RHIB.position.z-10);
-      if(k>0.3&&k<0.32) spawnSprite(RHIB.position.x,WATER_Y+0.3,RHIB.position.z+3,false,3,1,1);
-      if(t>2.5&&!cine.titled){ cine.titled=true; el("cineTitle").textContent="KESTREL POINT"; el("cineSub").textContent="0340 HOURS — FORTY MINUTES AFTER RAVENSCAR"; el("cineTitle").style.opacity=1; el("cineSub").style.opacity=1; }
-      if(t>7){ el("cineTitle").style.opacity=0; el("cineSub").style.opacity=0; } }
-    else { const k=(u-0.55)/0.45; const e=k*k*(3-2*k); RHIB.position.set(COVE.x,groundAt(COVE.x,SHORE_Z+3)+0.3,SHORE_Z+3); RHIB.rotation.set(0,0.15,0);
-      camera.position.set(lerp(COVE.x+8,COVE.x-10,e),lerp(2,50,e)+WATER_Y,lerp(SHORE_Z+12,SHORE_Z-40,e)); camera.lookAt(lerp(COVE.x,BAT.x,e),lerp(WATER_Y+1,10,e),lerp(SHORE_Z-2,BAT.z,e));
-      if(k>0.25&&k<0.27){ el("cineTitle").textContent="OPERATION SABLEWIND"; el("cineSub").textContent="THREE LAUNCHERS · ONE BUNKER · ONE WAY HOME"; el("cineTitle").style.opacity=1; el("cineSub").style.opacity=1; }
-      if(k>0.85){ el("cineTitle").style.opacity=0; el("cineSub").style.opacity=0; } }
+    const gx=COVE.x, gz=SHORE_Z+3, gy=groundAt(COVE.x,SHORE_Z+3)+0.3;
+    const e=u*u*(3-2*u);
+    // she runs in fast, throttles back in the shallows, and grounds with a lurch
+    if(u<1){ RHIB.position.set(lerp(sx,gx,e),lerp(WATER_Y+0.35,gy,smooth(0.88,1,u))+Math.sin(t*2)*0.15*(1-e),lerp(sz,gz,e)); RHIB.rotation.y=Math.atan2(sx-gx,sz-gz)+Math.sin(t*0.7)*0.03; RHIB.rotation.x=Math.sin(t*2.3)*0.04*(1-e)+(u>0.9?-(u-0.9)*0.6:0);
+      if(Math.random()<dt*10){ const wp=new THREE.Vector3(0,0.1,3.0); RHIB.localToWorld(wp); spawnSprite(wp.x,WATER_Y+0.2,wp.z,false,rnd(2,3),1.0,0.3); } }
+    // you are in the boat: the camera sits in the seat and you can look around
+    RHIB.updateMatrixWorld(true); const seat=RHIB_SEAT.clone(); RHIB.localToWorld(seat); seat.y+=EYE-0.5;
+    camera.position.copy(seat); camera.rotation.order="YXZ"; camera.rotation.set(player.pitch,RHIB.rotation.y+player.yaw-Math.PI,RHIB.rotation.z*0.5);
+    player.pos.set(seat.x,seat.y-EYE+0.5,seat.z);
+    if(t>1.5&&!cine.titled){ cine.titled=true; el("cineTitle").textContent="KESTREL POINT"; el("cineSub").textContent="0340 HOURS — FORTY MINUTES AFTER RAVENSCAR"; el("cineTitle").style.opacity=1; el("cineSub").style.opacity=1; }
+    if(t>6.5&&cine.titled&&!cine.titled2){ cine.titled2=true; el("cineTitle").style.opacity=0; el("cineSub").style.opacity=0; }
+    if(t>8.5&&cine.titled2&&!cine.titled3){ cine.titled3=true; el("cineTitle").textContent="OPERATION SABLEWIND"; el("cineSub").textContent="THREE LAUNCHERS · ONE BUNKER · ONE WAY HOME"; el("cineTitle").style.opacity=1; el("cineSub").style.opacity=1; }
+    if(t>12.5){ el("cineTitle").style.opacity=0; el("cineSub").style.opacity=0; }
     if(u>=1) endCinematic();
   } else if(cine.kind==="exfil"){
     const LEN=22, u=Math.min(1,t/LEN);
@@ -3836,7 +3868,15 @@ function cineTick(dt){
     if(u>=1) endExfil();
   }
 }
-function endCinematic(){ cine=null; RHIB.position.set(COVE.x,groundAt(COVE.x,SHORE_Z+3)+0.3,SHORE_Z+3); RHIB.rotation.set(0,0.15,0); el("cine").style.display="none"; playerBody.visible=false; running=true; el("hud").style.display="block"; curW().model.visible=true; applyZoom(); player.yaw=0; player.pitch=0; tStart=performance.now(); refreshObjective(); showMsg("Ashore. The path up the cliff is to the north."); callout("Nightfall, Paladin 2-1. We're clear. Radio silence until you call. Good luck, Jones.",{radio:true}); renderer.domElement.requestPointerLock(); }
+function endCinematic(){
+  cine=null; RHIB.position.set(COVE.x,groundAt(COVE.x,SHORE_Z+3)+0.3,SHORE_Z+3); RHIB.rotation.set(-0.06,0.15,0);
+  el("cine").style.display="none"; running=true; el("hud").style.display="block"; curW().model.visible=true; applyZoom();
+  // you are still sitting in her: the seat is where you are, facing the bow
+  RHIB.updateMatrixWorld(true); const seat=RHIB_SEAT.clone(); RHIB.localToWorld(seat); player.pos.set(seat.x,seat.y-0.5,seat.z); player.inBoat=true; player.yaw=RHIB.rotation.y; player.pitch=0.05; player.vy=0;
+  tStart=performance.now(); refreshObjective(); showMsg("Beached. Step off the boat — the cliff path is north of the cove.");
+  callout("Nightfall, Paladin 2-1. Boat's on the sand. Radio silence until you call. Good luck, Jones.",{radio:true});
+  renderer.domElement.requestPointerLock();
+}
 function startExfilCinematic(){ ttsStop(); cine={t:0,kind:"exfil"}; running=false; document.exitPointerLock(); el("hud").style.display="none"; el("cine").style.display="block"; el("lbTop").style.height="11vh"; el("lbBot").style.height="11vh"; el("cineTitle").style.opacity=0; el("cineSub").style.opacity=0; el("cineSkip").textContent="SPACE — SKIP TO DEBRIEF"; hideTags(); zoomed=false; binoc=false; applyBinoc(); curW().model.visible=false; HELI.g.rotation.set(0,HELI.g.rotation.y,0); }
 function endExfil(){ cine=null; el("cine").style.display="none"; gameOver=true; if(heliGain) heliGain.gain.value=0; el("winStats").innerHTML=debriefText(); el("winScreen").style.display="flex"; }
 function debriefText(){
@@ -4108,11 +4148,14 @@ const cv=renderer.domElement;
 document.addEventListener("pointerlockchange",()=>{ if(document.pointerLockElement!==cv && running && !mapOpen && !cine && !gameOver){ paused=true; el("pauseScreen").style.display="flex"; } });
 cv.addEventListener("click",()=>{ if(running&&!paused&&!mapOpen&&document.pointerLockElement!==cv) cv.requestPointerLock(); });
 el("resumeBtn").onclick=()=>{ paused=false; el("pauseScreen").style.display="none"; cv.requestPointerLock(); };
-document.addEventListener("mousemove",e=>{ if(document.pointerLockElement!==cv||!running||paused) return; const sens=0.0022*((zoomed||binoc)?Math.max(0.05,camera.fov/72):1); player.yaw-=e.movementX*sens; player.pitch=clamp(player.pitch-e.movementY*sens,-1.5,1.5); });
+document.addEventListener("mousemove",e=>{ if(document.pointerLockElement!==cv||paused) return; if(!running && !(cine&&cine.kind==="insert")) return; const sens=0.0022*((zoomed||binoc)?Math.max(0.05,camera.fov/72):1); player.yaw-=e.movementX*sens; player.pitch=clamp(player.pitch-e.movementY*sens,-1.5,1.5); });
 document.addEventListener("mousedown",e=>{ if(!running||paused||mapOpen) return; if(document.pointerLockElement!==cv) return; if(e.button===0){ firing=true; shoot(); } if(e.button===2) setAim(!zoomed); });
 document.addEventListener("mouseup",e=>{ if(e.button===0) firing=false; });
 document.addEventListener("contextmenu",e=>e.preventDefault());
-document.addEventListener("wheel",e=>{ if(!running||paused) return; if(zoomed||binoc){ stepZoom(e.deltaY<0?1:-1); } else nextOwned(e.deltaY>0?1:-1); },{passive:true});
+// a trackpad fires dozens of tiny wheel events per flick; a mouse fires one
+// big one. Accumulate to a notch and rate-limit, so one flick is one change.
+let wheelAcc=0, wheelT=0;
+document.addEventListener("wheel",e=>{ if(!running||paused) return; const now=performance.now(); wheelAcc+=e.deltaY; if(Math.abs(wheelAcc)<50 || now-wheelT<260) return; const dir=wheelAcc>0?1:-1; wheelAcc=0; wheelT=now; if(zoomed||binoc){ stepZoom(-dir); } else nextOwned(dir); },{passive:true});
 document.addEventListener("keydown",e=>{
   if(e.code==="Space"&&brief.on){ e.preventDefault(); briefSkip(); return; }
   if(e.code==="Space"&&cine){ e.preventDefault(); briefSkipCine(); return; }
@@ -4158,15 +4201,12 @@ function playerTick(dt){
   // forward is (-sin yaw, -cos yaw); right is (cos yaw, -sin yaw). W = mz -1.
   const dx=(mx*cy + mz*sy)*spd*dt, dz=(-mx*sy + mz*cy)*spd*dt;
   // ladders
-  const L=findLadder();
-  if(L && (keys.KeyW||climbing) && !climbing && Math.abs(p.y-(L.y1||8.4))>0.6){ climbing=true; curLadder=L; player.vy=0; }
   if(climbing){
     const y0=curLadder.y0!==undefined?curLadder.y0:0, y1=curLadder.y1!==undefined?curLadder.y1:8.4;
     if(keys.KeyW) p.y+=2.6*dt; if(keys.KeyS) p.y-=2.6*dt;
     p.x+=(curLadder.cx-p.x)*Math.min(1,dt*6); p.z+=(curLadder.cz-p.z)*Math.min(1,dt*6);
     if(p.y>=y1){ p.y=y1+0.05; climbing=false; if(curLadder.side==="x") p.x-=1.2; else p.z-=1.6; }
     if(p.y<=y0+0.05){ p.y=y0; climbing=false; }
-    if(!L && !climbing){}
   } else {
     const before=Math.hypot(dx,dz);
     slideMove(p,dx,dz,RADIUS,p.y+(player.crouch?1.3:1.9));
@@ -4202,6 +4242,7 @@ function playerTick(dt){
   player.inLight=false;
   for(let k=0;k<SPOT_N;k++){ const S=SPOT_POOL[k]; if(S.intensity<=0) continue; const d=Math.hypot(S.target.position.x-p.x,S.target.position.z-p.z); if(d<10 && p.y<S.position.y) { player.inLight=true; break; } }
   if(inSmoke()) player.inLight=false;
+  if(player.inBoat){ const d=Math.hypot(p.x-RHIB.position.x,p.z-RHIB.position.z); if(d>3.2){ player.inBoat=false; showMsg("Ashore. Nobody heard you. The cliff path is north."); refreshObjective(); } }
   if(stage===0 && p.y>-2 && Math.hypot(p.x-COVE.x,p.z-COVE.z)>60){ stage=1; refreshObjective(); showMsg("On the plateau. The battery is east — Widow's Rock is north of you, with a view of it."); }
 }
 function tick(){
